@@ -1,0 +1,36 @@
+{
+  "events": [
+    {
+      "id": "kaikoura-2016",
+      "name": "Kaikōura M7.8 — 14 Nov 2016",
+      "date": "14 Nov 2016",
+      "magnitude": 7.8,
+      "region": "Kaikōura, Marlborough",
+      "file": "events/kaikoura-2016.json"
+    },
+    {
+      "id": "christchurch-2011",
+      "name": "Christchurch M6.2 — 22 Feb 2011",
+      "date": "22 Feb 2011",
+      "magnitude": 6.2,
+      "region": "Christchurch, Canterbury",
+      "file": "events/christchurch-2011.json"
+    },
+    {
+      "id": "darfield-2010",
+      "name": "Darfield M7.1 — 4 Sep 2010",
+      "date": "4 Sep 2010",
+      "magnitude": 7.1,
+      "region": "Darfield, Canterbury",
+      "file": "events/darfield-2010.json"
+    },
+    {
+      "id": "dusky-sound-2009",
+      "name": "Dusky Sound M7.8 — 15 Jul 2009",
+      "date": "15 Jul 2009",
+      "magnitude": 7.8,
+      "region": "Dusky Sound, Fiordland",
+      "file": "events/dusky-sound-2009.json"
+    }
+  ]
+}

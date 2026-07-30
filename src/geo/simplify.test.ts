@@ -49,7 +49,10 @@ describe('simplify', () => {
   });
 
   it('always retains both endpoints', () => {
-    const pts: Pt[] = Array.from({length: 50}, (_, i) => [i, Math.sin(i)] as Pt);
+    const pts: Pt[] = Array.from(
+      {length: 50},
+      (_, i) => [i, Math.sin(i)] as Pt
+    );
     const out = simplify(pts, 2);
     expect(out[0]).toEqual(pts[0]);
     expect(out[out.length - 1]).toEqual(pts[pts.length - 1]);
@@ -57,7 +60,10 @@ describe('simplify', () => {
   });
 
   it('reduces more aggressively with a larger tolerance', () => {
-    const pts: Pt[] = Array.from({length: 100}, (_, i) => [i, Math.sin(i / 3)] as Pt);
+    const pts: Pt[] = Array.from(
+      {length: 100},
+      (_, i) => [i, Math.sin(i / 3)] as Pt
+    );
     const gentle = simplify(pts, 0.1);
     const harsh = simplify(pts, 1);
     expect(harsh.length).toBeLessThanOrEqual(gentle.length);

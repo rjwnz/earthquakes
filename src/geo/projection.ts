@@ -114,7 +114,7 @@ export function createProjector(
 
   // Extent in "corrected degrees": horizontal degrees are shrunk by cos(lat).
   const geoWidth = (bounds.maxLon - bounds.minLon) * cosLat || 1e-9;
-  const geoHeight = (bounds.maxLat - bounds.minLat) || 1e-9;
+  const geoHeight = bounds.maxLat - bounds.minLat || 1e-9;
 
   const availW = Math.max(1, width - 2 * padding);
   const availH = Math.max(1, height - 2 * padding);

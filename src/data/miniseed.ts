@@ -77,7 +77,11 @@ function readAscii(view: DataView, offset: number, length: number): string {
 }
 
 /** Convert a SEED BTIME (10 bytes at `offset`) to epoch milliseconds. */
-function btimeToMs(view: DataView, offset: number, littleEndian: boolean): number {
+function btimeToMs(
+  view: DataView,
+  offset: number,
+  littleEndian: boolean
+): number {
   const year = view.getUint16(offset, littleEndian);
   const doy = view.getUint16(offset + 2, littleEndian); // day of year, 1-based
   const hour = view.getUint8(offset + 4);
@@ -210,11 +214,14 @@ export function decodeSteim(
         } else {
           // code === 3
           if (dnib === 0) {
-            for (let s = 24; s >= 0; s -= 6) diffs.push(signExtend((w >>> s) & 0x3f, 6));
+            for (let s = 24; s >= 0; s -= 6)
+              diffs.push(signExtend((w >>> s) & 0x3f, 6));
           } else if (dnib === 1) {
-            for (let s = 25; s >= 0; s -= 5) diffs.push(signExtend((w >>> s) & 0x1f, 5));
+            for (let s = 25; s >= 0; s -= 5)
+              diffs.push(signExtend((w >>> s) & 0x1f, 5));
           } else {
-            for (let s = 24; s >= 0; s -= 4) diffs.push(signExtend((w >>> s) & 0xf, 4));
+            for (let s = 24; s >= 0; s -= 4)
+              diffs.push(signExtend((w >>> s) & 0xf, 4));
           }
         }
       }
@@ -341,8 +348,12 @@ export function parseMiniseed(
   return records;
 }
 
-const NSLC = (r: {network: string; station: string; location: string; channel: string}) =>
-  `${r.network}.${r.station}.${r.location}.${r.channel}`;
+const NSLC = (r: {
+  network: string;
+  station: string;
+  location: string;
+  channel: string;
+}) => `${r.network}.${r.station}.${r.location}.${r.channel}`;
 
 /**
  * Join records of the same channel (network.station.location.channel) into one

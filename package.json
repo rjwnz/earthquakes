@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Static visualisation of real GeoNet seismic waveforms propagating across Aotearoa New Zealand.",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

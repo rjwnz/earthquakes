@@ -95,7 +95,9 @@ describe('createProjector', () => {
     // pixel distance, because scale is shared across axes.
     const origin = proj.project({lat: -41, lon: 174});
     const north = proj.project({lat: -40, lon: 174});
-    const cosLat = Math.cos(((bounds.minLat + bounds.maxLat) / 2) * (Math.PI / 180));
+    const cosLat = Math.cos(
+      ((bounds.minLat + bounds.maxLat) / 2) * (Math.PI / 180)
+    );
     const east = proj.project({lat: -41, lon: 174 + 1 / cosLat});
     const dyNorth = Math.abs(north.y - origin.y);
     const dxEast = Math.abs(east.x - origin.x);

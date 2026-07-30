@@ -13,6 +13,10 @@
           <p id="event-name">Loading…</p>
         </div>
         <div class="title-meta">
+          <div class="picker">
+            <label class="control-label" for="event-select">Earthquake</label>
+            <select id="event-select" aria-label="Choose earthquake"></select>
+          </div>
           <span id="sensor-count"></span>
         </div>
       </header>
@@ -30,20 +34,22 @@
         </div>
       </main>
 
-      <section id="controls">
-        <div class="control-group transport">
-          <button id="play" type="button" aria-label="Play or pause">▶</button>
-          <input
-            id="timeline"
-            type="range"
-            min="0"
-            max="1000"
-            value="0"
-            step="1"
-            aria-label="Timeline"
-          />
+      <section id="trace-strip">
+        <button id="play" type="button" aria-label="Play or pause">▶</button>
+        <div id="trace-wrap">
+          <canvas
+            id="trace"
+            tabindex="0"
+            role="slider"
+            aria-label="Timeline — network shaking"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+          ></canvas>
         </div>
+      </section>
 
+      <section id="controls">
         <div class="control-group">
           <label class="control-label">Speed</label>
           <div id="speed-buttons" role="group" aria-label="Playback speed"></div>
@@ -60,6 +66,10 @@
             <option value="per-station">per station</option>
             <option value="uniform">uniform</option>
           </select>
+        </div>
+
+        <div class="control-group trace-caption">
+          <span>Bottom trace: network-wide shaking over time — click or drag to scrub</span>
         </div>
       </section>
     </div>

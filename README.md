@@ -14,7 +14,10 @@ Rendering convention:
 | moving **down** (negative amplitude) | **hollow** ring, radius ∝ shaking |
 | epicentre | crosshair marker |
 
-The checked-in demo is the **2016 Kaikōura M7.8** earthquake.
+Pick from several real historical NZ earthquakes in the header dropdown
+(Kaikōura 2016, Christchurch 2011, Darfield 2010, Dusky Sound 2009). The strip
+along the bottom is the **network-wide shaking over time** — click or drag it to
+scrub, with the playhead and origin marked.
 
 ![Snapshot at +150 s](docs/snapshot.svg)
 
@@ -38,8 +41,10 @@ file server.
 
 ## Controls
 
+- **Earthquake picker** (header) — switch between the events in the catalogue.
 - **Play / pause** (or the spacebar).
-- **Timeline** scrubber.
+- **Trace strip** (bottom) — the network shaking envelope over time; **click or
+  drag to scrub**, or focus it and use ←/→ (Shift for bigger steps), Home/End.
 - **Speed** presets from real-time (`1×`) down to **`0.05×`** slow motion.
 - **Loop** toggle (on by default).
 - **Normalise**: `per station` (default — every site shows a clear pulse as its
@@ -48,19 +53,23 @@ file server.
 
 ## The data
 
-Two datasets, identical JSON shape ([`src/data/types.ts`](src/data/types.ts) →
-`ShakeDataset`):
+The app loads `public/data/catalog.json` (the list of events) and then one
+`public/data/events/<id>.json` per event — every dataset shares the same JSON
+shape ([`src/data/types.ts`](src/data/types.ts) → `ShakeDataset`). **Adding an
+earthquake** = drop in another `events/<id>.json` and add a `catalog.json` entry;
+both builders below do that for you.
 
-### 1. The checked-in sample (real, ships with the repo)
+### 1. The checked-in samples (real, ship with the repo)
 
-`public/data/event.json` holds **real recorded waveforms** for 9 of the 11 NZ
-backbone broadband stations (mirrored by [EarthScope](https://www.earthscope.org/),
-including `KHZ` right by the epicentre and `CTZ` on the Chatham Islands as a
-located site). It's small, works offline, and is what the app loads out of the
-box. Rebuild it from the raw miniSEED with:
+Four historical events — **Kaikōura 2016, Christchurch 2011, Darfield 2010,
+Dusky Sound 2009** — built from **real recorded waveforms** for the NZ backbone
+broadband stations (mirrored by [EarthScope](https://www.earthscope.org/),
+including `KHZ` right by the Kaikōura epicentre and `CTZ` on the Chatham Islands
+as a located site). They're small, work offline, and are what the app loads out
+of the box. Rebuild them from the raw miniSEED with:
 
 ```bash
-npm run build-sample     # data-raw/kaikoura_hhz.mseed → public/data/event.json
+npm run build-sample     # data-raw/<id>_hhz.mseed → public/data/events/*.json + catalog.json
 ```
 
 ### 2. The full dense dataset (GeoNet AWS Open Data)
@@ -69,7 +78,7 @@ For the *dense* network (hundreds of strong-motion + broadband sensors), run the
 pipeline against GeoNet's public [AWS Open Data bucket](https://registry.opendata.aws/geonet/):
 
 ```bash
-npm run fetch-data       # → overwrites public/data/event.json
+npm run fetch-data       # → public/data/events/<datasetId>.json, upserts catalog.json
 ```
 
 [`scripts/fetch-data.ts`](scripts/fetch-data.ts):
@@ -81,11 +90,12 @@ npm run fetch-data       # → overwrites public/data/event.json
 2. For each station, GETs the day's miniSEED straight from the public S3 bucket
    (no credentials, plain HTTPS), decodes it with our own Steim reader, windows
    it to the event, and resamples onto the common grid.
-3. Writes the same `event.json` the app already understands.
+3. Writes an `events/<id>.json` in the same shape the app already understands and
+   adds/updates its `catalog.json` entry.
 
-Configure the event, time window, channels (strong-motion `HNZ` is preferred
-over broadband `HHZ`), region, and thinning density in the `CONFIG` block at the
-top of the script.
+Configure the event (id, metadata, time window), channels (strong-motion `HNZ`
+is preferred over broadband `HHZ`), region, and thinning density in the `CONFIG`
+block at the top of the script.
 
 > **Note — why there are two datasets.** GeoNet's AWS bucket, FDSN service, and
 > data API are all hosted in AWS `ap-southeast-2` (Sydney). This repo was built
@@ -106,16 +116,18 @@ curl -sSL https://raw.githubusercontent.com/GeoNet/delta/main/network/stations.c
 curl -sSL https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_land.geojson \
   -o data-raw/ne_50m_land.geojson
 npm run build-coastline   # → src/geo/nz-coastline.json
-# Real sample waveforms (Kaikōura, EarthScope mirror)
-curl -sSL "https://service.earthscope.org/fdsnws/dataselect/1/query?net=NZ&sta=BFZ,BKZ,CTZ,HIZ,KHZ,ODZ,OUZ,QRZ,RPZ,URZ,WPVZ&cha=HHZ&start=2016-11-13T11:02:00&end=2016-11-13T11:10:00" \
+# Real sample waveforms per event (EarthScope mirror), e.g. Kaikōura:
+S="BFZ,BKZ,CTZ,HIZ,KHZ,ODZ,OUZ,QRZ,RPZ,URZ,WPVZ"
+curl -sSL "https://service.earthscope.org/fdsnws/dataselect/1/query?net=NZ&sta=$S&cha=HHZ&start=2016-11-13T11:02:00&end=2016-11-13T11:10:00" \
   -o data-raw/kaikoura_hhz.mseed
-npm run build-sample      # → public/data/event.json
+# (and christchurch-2011, darfield-2010, dusky-sound-2009 — see the windows in scripts/build-sample.ts)
+npm run build-sample      # → public/data/events/*.json + catalog.json
 ```
 
 ## Testing
 
 ```bash
-npm test                 # vitest, 72 tests
+npm test                 # vitest, 82 tests
 npm run coverage
 ```
 
@@ -130,6 +142,7 @@ parts that can actually be wrong — rather than the DOM/canvas glue:
 | [`data/decimate`](src/data/decimate.ts) | grid decimation → representative-per-cell, priority & determinism |
 | [`data/amplitude`](src/data/amplitude.ts) | trace interpolation, robust normalisation scale, amplitude → radius/fill |
 | [`data/resample`](src/data/resample.ts) | anti-aliased box resample + DC-baseline removal |
+| [`data/envelope`](src/data/envelope.ts) | network shaking envelope (per-station-normalised mean) + peak-binning for the trace strip |
 | [`playback/clock`](src/playback/clock.ts) | speed scaling, looping/wrap, clamp-and-stop, seek |
 
 Lint/format with Google's style ([gts](https://github.com/google/gts)):
@@ -144,10 +157,10 @@ npm run fix
 ```
 src/
   geo/        projection (incl. Chatham), coastline simplify, bundled nz-coastline.json
-  data/       types, miniSEED/Steim decoder, decimation, amplitude, resample
+  data/       types, miniSEED/Steim decoder, decimation, amplitude, resample, envelope
   playback/   playback clock (slow-mo + loop)
-  render/     black-and-white canvas renderer
-  main.ts     glue: load → project → decimate → animate → controls
+  render/     black-and-white map renderer + bottom trace-strip renderer
+  main.ts     glue: catalogue → load event → project → decimate → animate → controls
 scripts/
   build-coastline.ts   Natural Earth land → bundled NZ coastline
   build-sample.ts      raw miniSEED → checked-in sample event.json

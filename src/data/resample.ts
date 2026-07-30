@@ -17,10 +17,14 @@ export function estimateBaseline(
   winStartMs: number,
   winEndMs: number
 ): number {
-  if (srcRateHz <= 0) throw new Error('estimateBaseline: srcRateHz must be > 0');
+  if (srcRateHz <= 0)
+    throw new Error('estimateBaseline: srcRateHz must be > 0');
   const srcStepMs = 1000 / srcRateHz;
   const lo = Math.max(0, Math.ceil((winStartMs - srcStartMs) / srcStepMs));
-  const hi = Math.min(samples.length, Math.floor((winEndMs - srcStartMs) / srcStepMs));
+  const hi = Math.min(
+    samples.length,
+    Math.floor((winEndMs - srcStartMs) / srcStepMs)
+  );
   if (hi <= lo) return 0;
   let sum = 0;
   for (let i = lo; i < hi; i++) sum += samples[i];
@@ -41,8 +45,10 @@ export function resampleBoxAverage(
   gridRateHz: number,
   count: number
 ): number[] {
-  if (srcRateHz <= 0) throw new Error('resampleBoxAverage: srcRateHz must be > 0');
-  if (gridRateHz <= 0) throw new Error('resampleBoxAverage: gridRateHz must be > 0');
+  if (srcRateHz <= 0)
+    throw new Error('resampleBoxAverage: srcRateHz must be > 0');
+  if (gridRateHz <= 0)
+    throw new Error('resampleBoxAverage: gridRateHz must be > 0');
 
   const srcStepMs = 1000 / srcRateHz;
   const gridStepMs = 1000 / gridRateHz;

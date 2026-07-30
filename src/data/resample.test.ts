@@ -33,7 +33,8 @@ describe('resampleBoxAverage', () => {
     // Output 1 at t=50ms averages indices ~[3,8) = (3+4+5+6+7)/5 = 5.
     expect(out[1]).toBeCloseTo(5, 6);
     // Monotonic increasing for a ramp.
-    for (let i = 1; i < out.length; i++) expect(out[i]).toBeGreaterThan(out[i - 1]);
+    for (let i = 1; i < out.length; i++)
+      expect(out[i]).toBeGreaterThan(out[i - 1]);
   });
 
   it('fills steps with no input as zero', () => {

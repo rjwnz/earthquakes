@@ -86,6 +86,26 @@ export interface ShakeDataset {
   sensors: SensorTrace[];
 }
 
+/** One entry in the earthquake catalogue (the event picker's data source). */
+export interface CatalogEntry {
+  /** Stable slug, also the dataset filename stem, e.g. "kaikoura-2016". */
+  id: string;
+  /** Display label, e.g. "Kaikōura M7.8 — 14 Nov 2016". */
+  name: string;
+  /** Human date (local), e.g. "14 Nov 2016". */
+  date: string;
+  magnitude: number;
+  /** Short region label, e.g. "Kaikōura, Marlborough". */
+  region: string;
+  /** Path to the {@link ShakeDataset} JSON, relative to the data directory. */
+  file: string;
+}
+
+/** The list of available earthquakes, loaded at startup to build the picker. */
+export interface Catalog {
+  events: CatalogEntry[];
+}
+
 /** A ring of [lon, lat] pairs (a coastline polygon outline). */
 export type Ring = Array<[number, number]>;
 

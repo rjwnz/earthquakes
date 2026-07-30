@@ -24,7 +24,8 @@ export function sampleTraceAt(
 ): number {
   const n = samples.length;
   if (n === 0) return 0;
-  if (sampleRateHz <= 0) throw new Error('sampleTraceAt: sampleRateHz must be > 0');
+  if (sampleRateHz <= 0)
+    throw new Error('sampleTraceAt: sampleRateHz must be > 0');
 
   const idx = ((timeMs - startMs) / 1000) * sampleRateHz;
   if (idx <= 0) return idx < 0 ? 0 : samples[0];
