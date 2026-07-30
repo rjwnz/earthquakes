@@ -1,0 +1,31 @@
+{
+  "name": "geonet-shakemap",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Static visualisation of real GeoNet seismic waveforms propagating across Aotearoa New Zealand.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "lint": "gts lint",
+    "fix": "gts fix",
+    "fetch-data": "tsx scripts/fetch-data.ts",
+    "build-coastline": "tsx scripts/build-coastline.ts",
+    "build-sample": "tsx scripts/build-sample.ts"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.14",
+    "@types/node": "^20.14.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "gts": "^6.0.2",
+    "jsdom": "^25.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "~5.5.4",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Editor / local tooling
+.idea/
+.claude/settings.local.json*
+
+# Large raw downloads — reproducible via the commands in the README.
+# The *processed* outputs that the app needs are committed:
+#   public/data/event.json, src/geo/nz-coastline.json, test/fixtures/*.mseed
+data-raw/

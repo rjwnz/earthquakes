@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GeoNet ShakeMap — seismic waves across Aotearoa</title>
+  </head>
+  <body>
+    <div id="app">
+      <header id="titlebar">
+        <div class="title-main">
+          <h1>GeoNet ShakeMap</h1>
+          <p id="event-name">Loading…</p>
+        </div>
+        <div class="title-meta">
+          <span id="sensor-count"></span>
+        </div>
+      </header>
+
+      <main id="stage">
+        <canvas id="map"></canvas>
+        <div id="clock-readout" aria-live="off">
+          <span id="time-origin">—</span>
+          <span id="time-utc"></span>
+        </div>
+        <div id="legend">
+          <span class="legend-item"><span class="glyph solid"></span> ground moving up (+)</span>
+          <span class="legend-item"><span class="glyph hollow"></span> ground moving down (−)</span>
+          <span class="legend-item"><span class="glyph epi"></span> epicentre</span>
+        </div>
+      </main>
+
+      <section id="controls">
+        <div class="control-group transport">
+          <button id="play" type="button" aria-label="Play or pause">▶</button>
+          <input
+            id="timeline"
+            type="range"
+            min="0"
+            max="1000"
+            value="0"
+            step="1"
+            aria-label="Timeline"
+          />
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Speed</label>
+          <div id="speed-buttons" role="group" aria-label="Playback speed"></div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label" for="loop-toggle">Loop</label>
+          <input id="loop-toggle" type="checkbox" checked />
+        </div>
+
+        <div class="control-group">
+          <label class="control-label" for="norm-toggle">Normalise</label>
+          <select id="norm-toggle" aria-label="Amplitude normalisation">
+            <option value="per-station">per station</option>
+            <option value="uniform">uniform</option>
+          </select>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
