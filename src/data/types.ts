@@ -106,6 +106,45 @@ export interface Catalog {
   events: CatalogEntry[];
 }
 
+/** A freely-licensed image shown in the event info panel, with attribution. */
+export interface EventImage {
+  /** Direct image URL (a Wikimedia Commons thumbnail). */
+  src: string;
+  /** Alt text describing the image. */
+  alt: string;
+  /** Author/source, shown as the photo credit. */
+  credit: string;
+  /** Licence short name, e.g. "CC BY-SA 4.0" or "Public domain". */
+  license: string;
+  /** Link to the image's description/licence page. */
+  href: string;
+}
+
+/** A "learn more" link for an event. */
+export interface EventLink {
+  label: string;
+  href: string;
+}
+
+/**
+ * Editorial content about one catalogue event (description, image, links),
+ * authored in `public/data/event-info.json` and keyed by {@link CatalogEntry.id}.
+ * Kept separate from the large machine-generated {@link ShakeDataset} files.
+ */
+export interface EventInfo {
+  /** Plain-language description of the earthquake and its effects. */
+  summary: string;
+  /** Short bullet facts (deaths, depth, notable effects). */
+  quickFacts: string[];
+  /** A representative freely-licensed image (optional). */
+  image?: EventImage;
+  /** Further-reading links. */
+  links: EventLink[];
+}
+
+/** The keyed collection loaded from `event-info.json`. */
+export type EventInfoMap = Record<string, EventInfo>;
+
 /** A ring of [lon, lat] pairs (a coastline polygon outline). */
 export type Ring = Array<[number, number]>;
 

@@ -1,0 +1,84 @@
+{
+  "kaikoura-2016": {
+    "summary": "Two minutes after midnight on 14 November 2016, a magnitude 7.8 earthquake tore through the top of the South Island — one of the most complex ruptures ever recorded, breaking at least 21 separate faults in about two minutes. The ground was lifted by as much as 8 metres in places, stretches of seabed rose out of the water, and enormous landslides buried State Highway 1 and the main rail line, cutting Kaikōura off for months. A tsunami of up to roughly 7 metres struck nearby coasts.",
+    "quickFacts": [
+      "2 lives lost",
+      "~21 faults ruptured in one quake",
+      "Up to 8 m of ground uplift",
+      "Tsunami up to ~7 m locally",
+      "SH1 and rail cut off for months"
+    ],
+    "image": {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Side_view_of_the_tearing_down_of_61_Molesworth_Street.jpg/500px-Side_view_of_the_tearing_down_of_61_Molesworth_Street.jpg",
+      "alt": "Demolition of the earthquake-damaged 61 Molesworth Street building in Wellington.",
+      "credit": "NZFC",
+      "license": "CC BY-SA 4.0",
+      "href": "https://commons.wikimedia.org/wiki/File:Side_view_of_the_tearing_down_of_61_Molesworth_Street.jpg"
+    },
+    "links": [
+      {"label": "Wikipedia: 2016 Kaikōura earthquake", "href": "https://en.wikipedia.org/wiki/2016_Kaik%C5%8Dura_earthquake"},
+      {"label": "GeoNet technical page", "href": "https://www.geonet.org.nz/earthquake/technical/2016p858000"}
+    ]
+  },
+  "christchurch-2011": {
+    "summary": "At lunchtime on 22 February 2011 a magnitude 6.2 quake struck almost directly beneath Christchurch, only 5 km down. Though far smaller than the 2010 Darfield quake, it was shallow and right under the city, producing some of the most violent ground shaking ever measured anywhere. 185 people died — many in the collapse of the CTV and PGC buildings — making it New Zealand's second-deadliest natural disaster. Widespread liquefaction turned the ground to mud and damaged tens of thousands of homes.",
+    "quickFacts": [
+      "185 lives lost",
+      "Only 5 km deep, right under the city",
+      "Among the strongest shaking ever recorded",
+      "Severe, city-wide liquefaction",
+      "An aftershock of the 2010 Darfield quake"
+    ],
+    "image": {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/ChristchurchBasilicaPostEarthquake_gobeirne.jpg/500px-ChristchurchBasilicaPostEarthquake_gobeirne.jpg",
+      "alt": "The damaged Cathedral of the Blessed Sacrament in Christchurch after the 2011 earthquake.",
+      "credit": "Greg O'Beirne",
+      "license": "CC BY-SA 3.0",
+      "href": "https://commons.wikimedia.org/wiki/File:ChristchurchBasilicaPostEarthquake_gobeirne.jpg"
+    },
+    "links": [
+      {"label": "Wikipedia: 2011 Christchurch earthquake", "href": "https://en.wikipedia.org/wiki/2011_Christchurch_earthquake"},
+      {"label": "GeoNet technical page", "href": "https://www.geonet.org.nz/earthquake/technical/3468575"}
+    ]
+  },
+  "darfield-2010": {
+    "summary": "In the early hours of 4 September 2010, a magnitude 7.1 earthquake struck the Canterbury Plains west of Christchurch, rupturing the previously unknown Greendale Fault and tearing a visible scar right across the farmland. Because it happened at 4:35 am and was a little further from the city, remarkably no one was killed — but it caused widespread damage and began the Canterbury earthquake sequence: thousands of aftershocks, including the deadly February 2011 Christchurch quake.",
+    "quickFacts": [
+      "No lives lost (it struck at 4:35 am)",
+      "Ruptured the hidden Greendale Fault",
+      "Left a surface scar across farmland",
+      "Began the Canterbury earthquake sequence"
+    ],
+    "image": {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Damage_from_the_2010_Canterbury_earthquake_in_Hororata.jpg/500px-Damage_from_the_2010_Canterbury_earthquake_in_Hororata.jpg",
+      "alt": "Earthquake damage to a building at Hororata after the 2010 Canterbury earthquake.",
+      "credit": "Joel Wiramu Pauling",
+      "license": "CC BY-SA 2.0",
+      "href": "https://commons.wikimedia.org/wiki/File:Damage_from_the_2010_Canterbury_earthquake_in_Hororata.jpg"
+    },
+    "links": [
+      {"label": "Wikipedia: 2010 Canterbury earthquake", "href": "https://en.wikipedia.org/wiki/2010_Canterbury_earthquake"},
+      {"label": "GeoNet technical page", "href": "https://www.geonet.org.nz/earthquake/technical/3366146"}
+    ]
+  },
+  "dusky-sound-2009": {
+    "summary": "On 15 July 2009 a magnitude 7.8 earthquake struck off Dusky Sound in remote Fiordland — New Zealand's largest quake since the 1931 Hawke's Bay disaster. It ruptured part of the plate boundary where the Australian and Pacific plates grind together, set off landslides in the fiords and a small tsunami, and even shifted the south-west corner of the South Island up to about 30 cm closer to Australia. Because the region is so remote and rugged, there was very little damage and no deaths.",
+    "quickFacts": [
+      "New Zealand's largest quake since 1931",
+      "Remote Fiordland — little damage, no deaths",
+      "Triggered a small tsunami and landslides",
+      "Nudged the SW South Island ~30 cm"
+    ],
+    "image": {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/2009_New_Zealand_earthquake.jpg/500px-2009_New_Zealand_earthquake.jpg",
+      "alt": "USGS ShakeMap showing modelled shaking intensity for the magnitude 7.8 Dusky Sound earthquake.",
+      "credit": "USGS",
+      "license": "Public domain",
+      "href": "https://commons.wikimedia.org/wiki/File:2009_New_Zealand_earthquake.jpg"
+    },
+    "links": [
+      {"label": "Wikipedia: 2009 Dusky Sound earthquake", "href": "https://en.wikipedia.org/wiki/2009_Dusky_Sound_earthquake"},
+      {"label": "GeoNet technical page", "href": "https://www.geonet.org.nz/earthquake/technical/3124785"}
+    ]
+  }
+}

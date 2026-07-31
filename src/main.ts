@@ -8,7 +8,14 @@
  */
 import './style.css';
 import coastlineJson from './geo/nz-coastline.json';
-import type {Catalog, Coastline, SensorTrace, ShakeDataset} from './data/types';
+import type {
+  Catalog,
+  CatalogEntry,
+  Coastline,
+  EventInfoMap,
+  SensorTrace,
+  ShakeDataset,
+} from './data/types';
 import {
   computeBounds,
   padBounds,
@@ -34,6 +41,13 @@ import {PlaybackClock, SPEED_PRESETS} from './playback/clock';
 
 const coastline = coastlineJson as unknown as Coastline;
 const INITIAL_SPEED = 1;
+
+// Well-known reference earthquakes shown alongside the catalogue in the
+// "how it compares" magnitude chart (moment magnitudes).
+const REFERENCE_QUAKES: ReadonlyArray<{label: string; mag: number}> = [
+  {label: 'Napier, 1931', mag: 7.8},
+  {label: 'Tōhoku, Japan 2011', mag: 9.1},
+];
 const DECIMATION_CELL_PX = 26;
 const MAP_PADDING_PX = 30;
 const DATA_BASE = `${import.meta.env.BASE_URL}data/`;
@@ -86,6 +100,12 @@ async function bootstrap(): Promise<void> {
     await fetch(`${DATA_BASE}catalog.json`)
   ).json()) as Catalog;
   if (catalog.events.length === 0) throw new Error('Catalogue is empty');
+
+  // Editorial per-event content (descriptions, images, links). Optional — the
+  // panel degrades gracefully to the computed facts if it can't be loaded.
+  const eventInfo: EventInfoMap = await fetch(`${DATA_BASE}event-info.json`)
+    .then(r => (r.ok ? (r.json() as Promise<EventInfoMap>) : {}))
+    .catch(() => ({}));
 
   const mapCanvas = el<HTMLCanvasElement>('map');
   const traceCanvas = el<HTMLCanvasElement>('trace');
@@ -269,6 +289,157 @@ async function bootstrap(): Promise<void> {
     drawTrace();
   };
 
+  // ---- "About this earthquake" info panel ----
+  const infoBody = el('event-info-body');
+  const infoPanel = el('event-info');
+  const infoToggle = el<HTMLButtonElement>('event-info-toggle');
+
+  const makeEl = (
+    tag: string,
+    className?: string,
+    text?: string
+  ): HTMLElement => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+
+  // Short place label from a catalogue name like "Kaikōura M7.8 — 14 Nov 2016".
+  const placeLabel = (name: string): string => name.split(/\s+M\d/)[0].trim();
+
+  // Human-friendly rounding for the energy-ratio readout.
+  const niceRatio = (r: number): string => {
+    if (r < 10) return String(Math.round(r));
+    if (r < 100) return String(Math.round(r / 10) * 10);
+    if (r < 1000) return String(Math.round(r / 50) * 50);
+    return String(Math.round(r / 500) * 500);
+  };
+
+  const buildComparison = (entry: CatalogEntry, mag: number): HTMLElement => {
+    const section = makeEl('div');
+    section.appendChild(
+      makeEl('p', 'ei-section-label', 'How it compares (magnitude)')
+    );
+
+    const rows = [
+      ...catalog.events.map(e => ({
+        label: placeLabel(e.name) + (e.id === entry.id ? ' — this quake' : ''),
+        mag: e.magnitude,
+        current: e.id === entry.id,
+      })),
+      ...REFERENCE_QUAKES.map(r => ({
+        label: r.label,
+        mag: r.mag,
+        current: false,
+      })),
+    ].sort((a, b) => b.mag - a.mag);
+
+    const mags = rows.map(r => r.mag);
+    const lo = Math.min(...mags) - 0.4;
+    const hi = Math.max(...mags) + 0.05;
+    const bars = makeEl('div', 'ei-bars');
+    for (const row of rows) {
+      const r = makeEl('div', `ei-bar-row${row.current ? ' current' : ''}`);
+      const label = makeEl('div', 'ei-bar-label');
+      label.appendChild(makeEl('span', undefined, row.label));
+      label.appendChild(makeEl('span', 'mag-val', `M${row.mag.toFixed(1)}`));
+      const track = makeEl('div', 'ei-bar-track');
+      const fill = makeEl('div', 'ei-bar-fill');
+      const frac = Math.max(0.02, Math.min(1, (row.mag - lo) / (hi - lo)));
+      fill.style.width = `${(frac * 100).toFixed(1)}%`;
+      track.appendChild(fill);
+      r.appendChild(label);
+      r.appendChild(track);
+      bars.appendChild(r);
+    }
+    section.appendChild(bars);
+
+    // Energy relative to a magnitude-6 quake: ~10^(1.5·ΔM) per magnitude unit.
+    const ratio = Math.pow(10, 1.5 * (mag - 6));
+    const energy = makeEl('p', 'ei-energy');
+    energy.append(
+      `A magnitude ${mag.toFixed(1)} quake releases about `,
+      makeEl('strong', undefined, `${niceRatio(ratio)}×`),
+      ' the energy of a magnitude-6 quake. Each step up the scale is roughly 32× more energy.'
+    );
+    section.appendChild(energy);
+    return section;
+  };
+
+  const renderEventInfo = (entry: CatalogEntry, ds: ShakeDataset): void => {
+    const info = eventInfo[entry.id];
+    while (infoBody.firstChild) infoBody.removeChild(infoBody.firstChild);
+
+    infoBody.appendChild(makeEl('p', 'ei-name', entry.region));
+
+    const chips = makeEl('div', 'ei-chips');
+    chips.appendChild(
+      makeEl('span', 'ei-chip mag', `M${ds.event.magnitude.toFixed(1)}`)
+    );
+    chips.appendChild(
+      makeEl('span', 'ei-chip', `${Math.round(ds.event.depthKm)} km deep`)
+    );
+    chips.appendChild(makeEl('span', 'ei-chip', entry.date));
+    infoBody.appendChild(chips);
+
+    if (info?.image) {
+      const fig = makeEl('figure', 'ei-figure');
+      const img = document.createElement('img');
+      img.src = info.image.src;
+      img.alt = info.image.alt;
+      img.loading = 'lazy';
+      // A broken image link shouldn't leave an empty box.
+      img.addEventListener('error', () => fig.remove());
+      fig.appendChild(img);
+      const credit = makeEl('figcaption', 'ei-credit');
+      const link = document.createElement('a');
+      link.href = info.image.href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = `${info.image.credit} · ${info.image.license}`;
+      credit.append('Photo: ', link);
+      fig.appendChild(credit);
+      infoBody.appendChild(fig);
+    }
+
+    if (info?.summary) {
+      infoBody.appendChild(makeEl('p', 'ei-summary', info.summary));
+    }
+
+    if (info?.quickFacts?.length) {
+      const facts = makeEl('ul', 'ei-facts');
+      for (const f of info.quickFacts)
+        facts.appendChild(makeEl('li', undefined, f));
+      infoBody.appendChild(facts);
+    }
+
+    infoBody.appendChild(buildComparison(entry, ds.event.magnitude));
+
+    if (info?.links?.length) {
+      infoBody.appendChild(makeEl('p', 'ei-section-label', 'Learn more'));
+      const links = makeEl('ul', 'ei-links');
+      for (const l of info.links) {
+        const li = makeEl('li');
+        const a = document.createElement('a');
+        a.href = l.href;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = l.label;
+        li.appendChild(a);
+        links.appendChild(li);
+      }
+      infoBody.appendChild(links);
+    }
+  };
+
+  infoToggle.addEventListener('click', () => {
+    const collapsed = infoPanel.classList.toggle('collapsed');
+    infoToggle.setAttribute('aria-expanded', String(!collapsed));
+    infoToggle.textContent = collapsed ? '+' : '–';
+    infoToggle.title = collapsed ? 'Show panel' : 'Hide panel';
+  });
+
   const updateReadout = (): void => {
     if (!dataset) return;
     const epoch = dataset.startMs + clock.positionMs;
@@ -303,6 +474,7 @@ async function bootstrap(): Promise<void> {
     dataset = (await res.json()) as ShakeDataset;
 
     el('event-name').textContent = `${dataset.event.name} · ${entry.region}`;
+    renderEventInfo(entry, dataset);
 
     const extent: LngLat[] = [
       ...coastline.rings.flatMap(ring =>

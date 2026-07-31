@@ -36,6 +36,19 @@
           <canvas id="sensor-tip-trace"></canvas>
           <div id="sensor-tip-meta"></div>
         </div>
+        <aside id="event-info" aria-label="About this earthquake">
+          <div id="event-info-head">
+            <h2 id="event-info-title">About this earthquake</h2>
+            <button
+              id="event-info-toggle"
+              type="button"
+              aria-expanded="true"
+              aria-controls="event-info-body"
+              title="Hide panel"
+            >–</button>
+          </div>
+          <div id="event-info-body"></div>
+        </aside>
         <div id="legend">
           <span class="legend-item"><span class="glyph solid"></span> shaking magnitude (disc size)</span>
           <span class="legend-item"><span class="glyph epi"></span> epicentre</span>
