@@ -17,6 +17,8 @@ import {fileURLToPath} from 'node:url';
 import {parseMiniseed, mergeRecords, type Trace} from '../src/data/miniseed';
 import {robustMaxAbs} from '../src/data/amplitude';
 import {estimateBaseline, resampleBoxAverage} from '../src/data/resample';
+import {detectShakingWindow} from '../src/data/window';
+import {nearestTo} from '../src/geo/distance';
 import type {
   ShakeDataset,
   SensorTrace,
@@ -31,7 +33,6 @@ const OUT_DIR = root + 'public/data';
 const EVENTS_DIR = OUT_DIR + '/events';
 
 const OUTPUT_RATE_HZ = 20;
-const DURATION_S = 480;
 
 /** The 11 GeoNet backbone broadband sites, with reference coordinates. */
 const STATIONS: Array<{code: string; name: string; lat: number; lon: number}> =
@@ -54,8 +55,6 @@ interface EventConfig {
   mseed: string;
   date: string;
   region: string;
-  /** Seconds of quiet lead-in before origin (matches the fetched window). */
-  preRollS: number;
   event: EventMeta;
 }
 
@@ -65,7 +64,6 @@ const EVENTS: EventConfig[] = [
     mseed: 'kaikoura_hhz.mseed',
     date: '14 Nov 2016',
     region: 'Kaikōura, Marlborough',
-    preRollS: 56,
     event: {
       id: '2016p858000',
       name: 'Kaikōura M7.8 — 14 Nov 2016',
@@ -81,7 +79,6 @@ const EVENTS: EventConfig[] = [
     mseed: 'christchurch-2011_hhz.mseed',
     date: '22 Feb 2011',
     region: 'Christchurch, Canterbury',
-    preRollS: 42,
     event: {
       id: '2011p079088',
       name: 'Christchurch M6.2 — 22 Feb 2011',
@@ -97,7 +94,6 @@ const EVENTS: EventConfig[] = [
     mseed: 'darfield-2010_hhz.mseed',
     date: '4 Sep 2010',
     region: 'Darfield, Canterbury',
-    preRollS: 46,
     event: {
       id: '3366146',
       name: 'Darfield M7.1 — 4 Sep 2010',
@@ -113,7 +109,6 @@ const EVENTS: EventConfig[] = [
     mseed: 'dusky-sound-2009_hhz.mseed',
     date: '15 Jul 2009',
     region: 'Dusky Sound, Fiordland',
-    preRollS: 29,
     event: {
       id: '3124785',
       name: 'Dusky Sound M7.8 — 15 Jul 2009',
@@ -153,15 +148,30 @@ function resample(
 function buildEvent(cfg: EventConfig): {
   dataset: ShakeDataset;
   recording: number;
+  window: {startS: number; endS: number; ref: string};
 } {
-  const startMs = cfg.event.originTimeMs - cfg.preRollS * 1000;
-  const endMs = startMs + DURATION_S * 1000;
-  const sampleCount = DURATION_S * OUTPUT_RATE_HZ;
-  const baselineEndMs = cfg.event.originTimeMs - 5000;
-
   const buf = readFileSync(`${RAW_DIR}/${cfg.mseed}`);
   const traces = mergeRecords(parseMiniseed(buf, {validateSteim: true}));
   const byStation = new Map(traces.map(t => [t.station, t]));
+
+  // Crop to the shaking window of the station nearest the epicentre: it starts
+  // just before major shaking begins there and ends once it has died away.
+  const located = STATIONS.filter(s => byStation.has(s.code));
+  const nearest = nearestTo(located, cfg.event);
+  if (!nearest) throw new Error(`${cfg.id}: no station data`);
+  const refTrace = byStation.get(nearest.code)!;
+  const win = detectShakingWindow(refTrace.samples, refTrace.startTimeMs, {
+    sampleRateHz: refTrace.sampleRateHz,
+    lowFraction: 0.05,
+    highFraction: 0.95,
+    preRollS: 5,
+    tailS: 5,
+  });
+  const startMs = win.startMs;
+  const endMs = win.endMs;
+  const sampleCount = Math.round(((endMs - startMs) / 1000) * OUTPUT_RATE_HZ);
+  // DC baseline from the quiet lead-in (before onset).
+  const baselineEndMs = win.onsetMs;
 
   const sensors: SensorTrace[] = STATIONS.map(s => {
     const trace = byStation.get(s.code);
@@ -184,7 +194,15 @@ function buildEvent(cfg: EventConfig): {
     amplitudeScale,
     sensors,
   };
-  return {dataset, recording: sensors.filter(s => s.hasData).length};
+  return {
+    dataset,
+    recording: sensors.filter(s => s.hasData).length,
+    window: {
+      startS: (startMs - cfg.event.originTimeMs) / 1000,
+      endS: (endMs - cfg.event.originTimeMs) / 1000,
+      ref: nearest.code,
+    },
+  };
 }
 
 function main(): void {
@@ -196,7 +214,7 @@ function main(): void {
       console.warn(`skip ${cfg.id}: missing data-raw/${cfg.mseed}`);
       continue;
     }
-    const {dataset, recording} = buildEvent(cfg);
+    const {dataset, recording, window} = buildEvent(cfg);
     const file = `events/${cfg.id}.json`;
     writeFileSync(`${OUT_DIR}/${file}`, JSON.stringify(dataset));
 
@@ -211,6 +229,8 @@ function main(): void {
     catalog.events.push(entry);
     console.log(
       `${cfg.id}: ${recording}/${dataset.sensors.length} recording, ` +
+        `window ${window.startS.toFixed(0)}..${window.endS.toFixed(0)}s ` +
+        `(from origin, ref ${window.ref}), ` +
         `${(JSON.stringify(dataset).length / 1024).toFixed(0)} KB`
     );
   }

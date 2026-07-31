@@ -69,7 +69,12 @@ Dusky Sound 2009** — built from **real recorded waveforms** for the NZ backbon
 broadband stations (mirrored by [EarthScope](https://www.earthscope.org/),
 including `KHZ` right by the Kaikōura epicentre and `CTZ` on the Chatham Islands
 as a located site). They're small, work offline, and are what the app loads out
-of the box. Rebuild them from the raw miniSEED with:
+of the box.
+
+Each event is cropped to its **shaking window** ([`data/window`](src/data/window.ts)):
+the station nearest the epicentre defines it, starting 5 s before major shaking
+begins there and ending once its significant duration (Arias 5–95% energy) is
+over. Rebuild them from the raw miniSEED with:
 
 ```bash
 npm run build-sample     # data-raw/<id>_hhz.mseed → public/data/events/*.json + catalog.json
@@ -130,7 +135,7 @@ npm run build-sample      # → public/data/events/*.json + catalog.json
 ## Testing
 
 ```bash
-npm test                 # vitest, 89 tests
+npm test                 # vitest, 96 tests
 npm run coverage
 ```
 
@@ -145,6 +150,7 @@ parts that can actually be wrong — rather than the DOM/canvas glue:
 | [`data/decimate`](src/data/decimate.ts) | grid decimation → representative-per-cell, priority & determinism |
 | [`data/amplitude`](src/data/amplitude.ts) | trace interpolation, robust normalisation scale, amplitude → radius/fill |
 | [`data/resample`](src/data/resample.ts) | anti-aliased box resample + DC-baseline removal |
+| [`data/window`](src/data/window.ts) | significant-duration (Arias 5–95%) shaking-window detection |
 | [`geo/distance`](src/geo/distance.ts) | haversine distance + nearest-station selection (antimeridian-safe) |
 | [`data/waveform`](src/data/waveform.ts) | signed peak-preserving decimation for the seismogram timeline |
 | [`playback/clock`](src/playback/clock.ts) | speed scaling, looping/wrap, clamp-and-stop, seek |

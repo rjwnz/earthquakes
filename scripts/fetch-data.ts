@@ -19,11 +19,13 @@
  */
 import {readFileSync, writeFileSync, mkdirSync, existsSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {parseMiniseed, mergeRecords} from '../src/data/miniseed';
+import {parseMiniseed, mergeRecords, type Trace} from '../src/data/miniseed';
 import {robustMaxAbs} from '../src/data/amplitude';
 import {estimateBaseline, resampleBoxAverage} from '../src/data/resample';
+import {detectShakingWindow} from '../src/data/window';
 import {decimateByGrid} from '../src/data/decimate';
 import {wrapLongitude} from '../src/geo/projection';
+import {nearestTo} from '../src/geo/distance';
 import type {
   ShakeDataset,
   SensorTrace,
@@ -54,10 +56,22 @@ const CONFIG = {
     magnitude: 7.8,
   } as EventMeta,
 
-  /** Playback window: starts `preRollS` before origin, lasts `durationS`. */
-  preRollS: 56,
-  durationS: 480,
   outputRateHz: 20,
+
+  /**
+   * The playback window is detected from the shaking of the station nearest the
+   * epicentre (significant duration): it starts `preRollS` before major shaking
+   * begins there and ends `tailS` after it has died away. `guardPreS`/`maxSpanS`
+   * bound how much raw data is pulled while searching for that window.
+   */
+  window: {
+    lowFraction: 0.05,
+    highFraction: 0.95,
+    preRollS: 5,
+    tailS: 5,
+    guardPreS: 30,
+    maxSpanS: 600,
+  },
 
   /**
    * Vertical channels to try, in order. Strong-motion accelerometers (HNZ/BNZ)
@@ -85,10 +99,10 @@ const CONFIG = {
   concurrency: 6,
 };
 
-const START_MS = CONFIG.event.originTimeMs - CONFIG.preRollS * 1000;
-const END_MS = START_MS + CONFIG.durationS * 1000;
-const SAMPLE_COUNT = CONFIG.durationS * CONFIG.outputRateHz;
-const BASELINE_END_MS = CONFIG.event.originTimeMs - 5000;
+// Generous span of raw data to pull while searching for the shaking window.
+const GUARD_START_MS =
+  CONFIG.event.originTimeMs - CONFIG.window.guardPreS * 1000;
+const GUARD_END_MS = CONFIG.event.originTimeMs + CONFIG.window.maxSpanS * 1000;
 
 interface Station {
   code: string;
@@ -192,7 +206,7 @@ async function s3ListKeys(prefix: string): Promise<string[]> {
 }
 
 const doy = (() => {
-  const d = new Date(START_MS);
+  const d = new Date(GUARD_START_MS);
   const startOfYear = Date.UTC(d.getUTCFullYear(), 0, 1);
   return (
     Math.floor(
@@ -202,11 +216,14 @@ const doy = (() => {
     ) + 1
   );
 })();
-const year = new Date(START_MS).getUTCFullYear();
+const year = new Date(GUARD_START_MS).getUTCFullYear();
 const doyStr = String(doy).padStart(3, '0');
 
-/** Resolve and download the first available vertical channel for a station. */
-async function fetchStationTrace(sta: Station): Promise<number[] | null> {
+/**
+ * Resolve and download the first available vertical channel for a station,
+ * returning its merged raw trace (native rate) over the guard span, or null.
+ */
+async function fetchStationRaw(sta: Station): Promise<Trace | null> {
   for (const cha of CONFIG.channels) {
     const prefix = `waveforms/miniseed/${year}/${CONFIG.network}/${sta.code}/${cha}.D/`;
     let keys: string[];
@@ -224,31 +241,39 @@ async function fetchStationTrace(sta: Station): Promise<number[] | null> {
     // Lenient: real archive records can have the odd gap; skip integrity throws.
     const records = parseMiniseed(buf, {validateSteim: false}).filter(r => {
       const recEnd = r.startTimeMs + (r.numSamples / r.sampleRateHz) * 1000;
-      return r.startTimeMs < END_MS && recEnd > START_MS;
+      return r.startTimeMs < GUARD_END_MS && recEnd > GUARD_START_MS;
     });
     if (records.length === 0) continue;
 
     const [trace] = mergeRecords(records);
-    if (!trace) continue;
-
-    const baseline = estimateBaseline(
-      trace.samples,
-      trace.startTimeMs,
-      trace.sampleRateHz,
-      START_MS,
-      BASELINE_END_MS
-    );
-    const grid = resampleBoxAverage(
-      trace.samples,
-      trace.startTimeMs,
-      trace.sampleRateHz,
-      START_MS,
-      CONFIG.outputRateHz,
-      SAMPLE_COUNT
-    );
-    return grid.map(v => Math.round(v - baseline));
+    if (trace) return trace;
   }
   return null;
+}
+
+/** Resample a raw trace onto the final window, removing the pre-onset baseline. */
+function resampleTrace(
+  trace: Trace,
+  startMs: number,
+  count: number,
+  baselineEndMs: number
+): number[] {
+  const baseline = estimateBaseline(
+    trace.samples,
+    trace.startTimeMs,
+    trace.sampleRateHz,
+    startMs,
+    baselineEndMs
+  );
+  const grid = resampleBoxAverage(
+    trace.samples,
+    trace.startTimeMs,
+    trace.sampleRateHz,
+    startMs,
+    CONFIG.outputRateHz,
+    count
+  );
+  return grid.map(v => Math.round(v - baseline));
 }
 
 /** Run `worker` over `items` with bounded concurrency, preserving order. */
@@ -282,23 +307,59 @@ async function main(): Promise<void> {
   );
 
   let done = 0;
-  const results = await pool(selected, CONFIG.concurrency, async sta => {
-    let samples: number[] | null = null;
+  const raw = await pool(selected, CONFIG.concurrency, async sta => {
+    let trace: Trace | null = null;
     try {
-      samples = await fetchStationTrace(sta);
+      trace = await fetchStationRaw(sta);
     } catch (err) {
       console.warn(`  ${sta.code}: ${(err as Error).message}`);
     }
     done++;
     if (done % 20 === 0) console.log(`  …${done}/${selected.length}`);
-    return {sta, samples};
+    return {sta, trace};
   });
 
-  const sensors: SensorTrace[] = results.map(({sta, samples}) =>
-    samples
-      ? {...sta, samples, hasData: true, scale: robustMaxAbs(samples, 0.995)}
+  // Detect the shaking window from the station nearest the epicentre that has
+  // data, then crop every trace to it (matches scripts/build-sample.ts).
+  const withData = raw.filter(r => r.trace);
+  const nearest = nearestTo(
+    withData.map(r => r.sta),
+    CONFIG.event
+  );
+  const nearestTrace = withData.find(r => r.sta.code === nearest?.code)?.trace;
+  const win = nearestTrace
+    ? detectShakingWindow(nearestTrace.samples, nearestTrace.startTimeMs, {
+        sampleRateHz: nearestTrace.sampleRateHz,
+        lowFraction: CONFIG.window.lowFraction,
+        highFraction: CONFIG.window.highFraction,
+        preRollS: CONFIG.window.preRollS,
+        tailS: CONFIG.window.tailS,
+      })
+    : {startMs: GUARD_START_MS, endMs: GUARD_END_MS, onsetMs: GUARD_START_MS};
+  const startMs = win.startMs;
+  const endMs = win.endMs;
+  const sampleCount = Math.round(
+    ((endMs - startMs) / 1000) * CONFIG.outputRateHz
+  );
+  console.log(
+    `window: ${((startMs - CONFIG.event.originTimeMs) / 1000).toFixed(0)}..` +
+      `${((endMs - CONFIG.event.originTimeMs) / 1000).toFixed(0)}s from origin` +
+      (nearest ? ` (ref ${nearest.code})` : '')
+  );
+
+  const sensors: SensorTrace[] = raw.map(({sta, trace}) =>
+    trace
+      ? {
+          ...sta,
+          samples: resampleTrace(trace, startMs, sampleCount, win.onsetMs),
+          hasData: true,
+          scale: 0,
+        }
       : {...sta, samples: [], hasData: false, scale: 0}
   );
+  for (const s of sensors) {
+    if (s.hasData) s.scale = robustMaxAbs(s.samples, 0.995);
+  }
 
   const recording = sensors.filter(s => s.hasData);
   const allSamples: number[] = [];
@@ -308,8 +369,8 @@ async function main(): Promise<void> {
   const dataset: ShakeDataset = {
     event: CONFIG.event,
     network: CONFIG.network,
-    startMs: START_MS,
-    endMs: END_MS,
+    startMs,
+    endMs,
     sampleRateHz: CONFIG.outputRateHz,
     units: 'counts (uncorrected ground motion)',
     amplitudeScale,
