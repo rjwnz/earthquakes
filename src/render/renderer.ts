@@ -61,7 +61,12 @@ export type Normalisation = 'per-station' | 'uniform';
 export interface RenderStyle {
   background: string;
   coastline: string;
+  /** Sensor disc outline colour (a crisp, solid stroke). */
   sensor: string;
+  /** Sensor disc fill colour — translucent so overlapping discs read clearly. */
+  sensorFill: string;
+  /** Sensor disc outline width in px (pre-scaled by the caller). */
+  sensorStrokeWidth: number;
   restSensor: string;
   epicenter: string;
   fault: string;
@@ -93,7 +98,9 @@ export interface RenderStyle {
 export const DEFAULT_STYLE: RenderStyle = {
   background: '#000000',
   coastline: 'rgba(255,255,255,0.5)',
-  sensor: '#ffffff',
+  sensor: 'rgba(255,255,255,0.9)',
+  sensorFill: 'rgba(255,255,255,0.22)',
+  sensorStrokeWidth: 1.2,
   restSensor: 'rgba(255,255,255,0.28)',
   epicenter: 'rgba(255,255,255,0.85)',
   // A restrained warm accent — the geological convention for faults — kept
@@ -339,8 +346,8 @@ export function renderFrame(
     rangeDecades: style.rangeDecades,
   };
 
-  ctx.fillStyle = style.sensor;
   ctx.strokeStyle = style.sensor;
+  ctx.lineWidth = style.sensorStrokeWidth;
 
   for (const s of scene.sensors) {
     if (!s.hasData) {
@@ -349,7 +356,6 @@ export function renderFrame(
       ctx.arc(s.x, s.y, style.minRadius, 0, Math.PI * 2);
       ctx.fillStyle = style.restSensor;
       ctx.fill();
-      ctx.fillStyle = style.sensor;
       continue;
     }
 
@@ -377,9 +383,13 @@ export function renderFrame(
         : frame.globalScale;
     const {radius} = amplitudeToCircle(magnitude, {...circleOpts, scale});
 
+    // Translucent fill (overlaps accumulate to show density) + a crisp outline
+    // (so individual discs stay distinct where they overlap).
     ctx.beginPath();
     ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = style.sensorFill;
     ctx.fill();
+    ctx.stroke();
   }
 
   if (scene.epicenter) drawEpicentre(ctx, scene.epicenter, style);

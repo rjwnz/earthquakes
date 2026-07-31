@@ -152,6 +152,7 @@ function scaledStyle(k: number): RenderStyle {
     maxRadius: DEFAULT_STYLE.maxRadius * k,
     coastlineWidth: DEFAULT_STYLE.coastlineWidth * k,
     faultWidth: DEFAULT_STYLE.faultWidth * k,
+    sensorStrokeWidth: DEFAULT_STYLE.sensorStrokeWidth * k,
     uiScale: k,
   };
 }
