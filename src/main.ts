@@ -19,12 +19,14 @@ import {
 import {haversineKm, nearestTo, wavefrontRing} from './geo/distance';
 import {decimateByGrid, type Placed} from './data/decimate';
 import {robustMaxAbs} from './data/amplitude';
+import {shakingEnvelope} from './data/envelope';
 import {
   renderFrame,
   DEFAULT_STYLE,
   type RenderSensor,
   type Scene,
   type Normalisation,
+  type AmplitudeMode,
   type Wavefronts,
 } from './render/renderer';
 import {renderTraceStrip} from './render/traceStrip';
@@ -108,6 +110,9 @@ async function bootstrap(): Promise<void> {
   let traceSamples: readonly number[] = [];
   let traceScale = 1;
   let normalisation: Normalisation = 'per-station';
+  let amplitudeMode: AmplitudeMode = 'envelope';
+  // Precomputed shaking envelope per sensor (parallel to dataset.sensors).
+  let envelopes: number[][] = [];
   // Current projector (kept so wavefronts can be projected each frame).
   let projector: Projector | null = null;
   let showWaves = true;
@@ -146,6 +151,7 @@ async function bootstrap(): Promise<void> {
         y: c.representative.y,
         hasData: s.hasData,
         samples: s.samples,
+        envelope: envelopes[c.representative.index] ?? [],
         scale: s.scale,
         count: c.count,
       };
@@ -181,6 +187,7 @@ async function bootstrap(): Promise<void> {
       sampleRateHz: dataset.sampleRateHz,
       globalScale: dataset.amplitudeScale,
       normalisation,
+      amplitudeMode,
       currentTimeMs,
       wavefronts: computeWavefronts(elapsedSec),
     });
@@ -268,6 +275,13 @@ async function bootstrap(): Promise<void> {
       ...dataset.sensors.map(s => ({lat: s.lat, lon: s.lon})),
     ];
     bounds = padBounds(computeBounds(extent), 0.04);
+
+    // Precompute each sensor's smoothed shaking envelope (drives circle radius
+    // in envelope mode).
+    const rate = dataset.sampleRateHz;
+    envelopes = dataset.sensors.map(s =>
+      s.hasData ? shakingEnvelope(s.samples, {sampleRateHz: rate}) : []
+    );
 
     // Timeline shows the seismogram of the station nearest the epicentre.
     const recording = dataset.sensors.filter(s => s.hasData);
@@ -367,6 +381,10 @@ async function bootstrap(): Promise<void> {
   // ---- Loop + normalisation ----
   el<HTMLInputElement>('loop-toggle').addEventListener('change', ev => {
     clock.setLoop((ev.target as HTMLInputElement).checked);
+  });
+  el<HTMLSelectElement>('amp-mode').addEventListener('change', ev => {
+    amplitudeMode = (ev.target as HTMLSelectElement).value as AmplitudeMode;
+    drawMap();
   });
   el<HTMLSelectElement>('norm-toggle').addEventListener('change', ev => {
     normalisation = (ev.target as HTMLSelectElement).value as Normalisation;

@@ -27,11 +27,21 @@ export interface RenderSensor {
   y: number;
   hasData: boolean;
   samples: readonly number[];
+  /** Fast-attack/slow-decay amplitude envelope (see shakingEnvelope). */
+  envelope: readonly number[];
   /** Per-station robust amplitude scale. */
   scale: number;
   /** Number of real sensors this representative stands in for (≥ 1). */
   count: number;
 }
+
+/**
+ * How a sensor's circle radius is driven:
+ *  - `envelope`: smoothed magnitude (calm; no strobing) — the default,
+ *  - `instantaneous`: the raw signed value (the literal waveform).
+ * The fill (solid/hollow) always follows the instantaneous sign.
+ */
+export type AmplitudeMode = 'envelope' | 'instantaneous';
 
 export type Normalisation = 'per-station' | 'uniform';
 
@@ -83,6 +93,7 @@ export interface FrameContext {
   sampleRateHz: number;
   globalScale: number;
   normalisation: Normalisation;
+  amplitudeMode: AmplitudeMode;
   currentTimeMs: number;
   wavefronts?: Wavefronts | null;
 }
@@ -203,17 +214,30 @@ export function renderFrame(
       continue;
     }
 
-    const amp = sampleTraceAt(
+    const raw = sampleTraceAt(
       s.samples,
       frame.startMs,
       frame.sampleRateHz,
       frame.currentTimeMs
     );
+    // Radius follows the smoothed envelope (calm) or the raw value; either way
+    // the fill follows the instantaneous sign. Encoding magnitude and sign into
+    // one "signed magnitude" lets amplitudeToCircle handle both.
+    const magnitude =
+      frame.amplitudeMode === 'envelope'
+        ? sampleTraceAt(
+            s.envelope,
+            frame.startMs,
+            frame.sampleRateHz,
+            frame.currentTimeMs
+          )
+        : Math.abs(raw);
+    const signed = raw >= 0 ? magnitude : -magnitude;
     const scale =
       frame.normalisation === 'per-station'
         ? perStationScale(s.scale, frame.globalScale, style.perStationFloor)
         : frame.globalScale;
-    const {radius, filled} = amplitudeToCircle(amp, {...circleOpts, scale});
+    const {radius, filled} = amplitudeToCircle(signed, {...circleOpts, scale});
 
     ctx.beginPath();
     ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);

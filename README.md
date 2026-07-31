@@ -50,6 +50,11 @@ file server.
   Home/End.
 - **Speed** presets from real-time (`1×`) down to **`0.05×`** slow motion.
 - **Loop** toggle (on by default).
+- **Amplitude**: `envelope` (default — circle radius follows a smoothed
+  fast-attack/slow-decay envelope, so a dense network reads as calm swells
+  instead of strobing) or `waveform` (radius follows the raw instantaneous
+  value). The fill (solid up / hollow down) always follows the instantaneous
+  sign; the bottom timeline stays a signed seismogram.
 - **Normalise**: `per station` (default — every site shows a clear pulse as its
   wave arrives, best for seeing propagation) or `uniform` (one global scale, so
   near-field intensity dominates — true relative amplitude).
@@ -151,7 +156,7 @@ npm run build-sample      # → public/data/events/*.json + catalog.json
 ## Testing
 
 ```bash
-npm test                 # vitest, 105 tests
+npm test                 # vitest, 110 tests
 npm run coverage
 ```
 
@@ -167,6 +172,7 @@ parts that can actually be wrong — rather than the DOM/canvas glue:
 | [`data/amplitude`](src/data/amplitude.ts) | trace interpolation, robust normalisation scale, amplitude → radius/fill |
 | [`data/resample`](src/data/resample.ts) | anti-aliased box resample + DC-baseline removal |
 | [`data/window`](src/data/window.ts) | significant-duration (Arias 5–95%) shaking-window detection |
+| [`data/envelope`](src/data/envelope.ts) | fast-attack/slow-decay shaking-envelope follower (drives circle radius) |
 | [`geo/distance`](src/geo/distance.ts) | haversine distance, nearest-station selection, destination-point + wavefront rings (antimeridian-safe) |
 | [`data/waveform`](src/data/waveform.ts) | signed peak-preserving decimation for the seismogram timeline |
 | [`playback/clock`](src/playback/clock.ts) | speed scaling, looping/wrap, clamp-and-stop, seek |
