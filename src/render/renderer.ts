@@ -10,7 +10,11 @@
  * pixels (see `main.ts`); only the amplitude-driven parts change per frame, so
  * this stays cheap enough to run every animation frame.
  */
-import {sampleTraceAt, amplitudeToCircle} from '../data/amplitude';
+import {
+  sampleTraceAt,
+  amplitudeToCircle,
+  perStationScale,
+} from '../data/amplitude';
 
 export interface ScreenPoint {
   x: number;
@@ -43,6 +47,11 @@ export interface RenderStyle {
   maxRadius: number;
   /** Log dynamic range (decades) for the radius mapping; see amplitudeToCircle. */
   rangeDecades: number;
+  /**
+   * Floor for per-station normalisation, as a fraction of the global scale, so
+   * a not-yet-reached station's noise doesn't blow up to full size.
+   */
+  perStationFloor: number;
   coastlineWidth: number;
   ringWidth: number;
 }
@@ -58,6 +67,7 @@ export const DEFAULT_STYLE: RenderStyle = {
   minRadius: 1.6,
   maxRadius: 22,
   rangeDecades: 3,
+  perStationFloor: 0.05,
   coastlineWidth: 1,
   ringWidth: 1.6,
 };
@@ -200,7 +210,9 @@ export function renderFrame(
       frame.currentTimeMs
     );
     const scale =
-      frame.normalisation === 'per-station' ? s.scale : frame.globalScale;
+      frame.normalisation === 'per-station'
+        ? perStationScale(s.scale, frame.globalScale, style.perStationFloor)
+        : frame.globalScale;
     const {radius, filled} = amplitudeToCircle(amp, {...circleOpts, scale});
 
     ctx.beginPath();

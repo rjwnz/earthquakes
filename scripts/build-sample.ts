@@ -34,6 +34,15 @@ const EVENTS_DIR = OUT_DIR + '/events';
 
 const OUTPUT_RATE_HZ = 20;
 
+// Hybrid window: the end is the later of the near-epicentre significant duration
+// and the time for the S-wave to sweep out to a coverage radius, so we can watch
+// the wavefront propagate across the network (see scripts/fetch-data.ts too).
+const COVERAGE_RADIUS_KM = 400;
+const COVERAGE_VS_KMS = 3.0;
+const COVERAGE_TAIL_S = 40;
+const coverageEndMs = (originMs: number) =>
+  originMs + (COVERAGE_RADIUS_KM / COVERAGE_VS_KMS + COVERAGE_TAIL_S) * 1000;
+
 /** The 11 GeoNet backbone broadband sites, with reference coordinates. */
 const STATIONS: Array<{code: string; name: string; lat: number; lon: number}> =
   [
@@ -97,7 +106,15 @@ function buildEvent(cfg: EventConfig): {
     tailS: 5,
   });
   const startMs = win.startMs;
-  const endMs = win.endMs;
+  // Extend the end to let the wavefront reach the coverage radius, but not past
+  // the reference trace's available data.
+  const rawEndMs =
+    refTrace.startTimeMs +
+    ((refTrace.samples.length - 1) / refTrace.sampleRateHz) * 1000;
+  const endMs = Math.min(
+    rawEndMs,
+    Math.max(win.endMs, coverageEndMs(cfg.event.originTimeMs))
+  );
   const sampleCount = Math.round(((endMs - startMs) / 1000) * OUTPUT_RATE_HZ);
   // DC baseline from the quiet lead-in (before onset).
   const baselineEndMs = win.onsetMs;

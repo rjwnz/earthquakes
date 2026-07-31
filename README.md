@@ -103,14 +103,23 @@ For each event, [`scripts/fetch-data.ts`](scripts/fetch-data.ts):
    **thins them to one representative per grid cell** (the data-layer twin of the
    map's on-screen decimation) so it doesn't download the entire archive.
 2. For each station, GETs that day's miniSEED straight from the public S3 bucket
-   (no credentials, plain HTTPS), decodes it with our own Steim reader, detects
-   the shaking window from the nearest station, and resamples onto the grid.
-3. Writes an `events/<id>.json` in the same shape the app already understands and
+   (no credentials, plain HTTPS; the day/listing layout is
+   `.../{YEAR}/{YEAR}.{DOY}/{STA}.{NET}/{YEAR}.{DOY}.{STA}.{LOC}-{CHA}.{NET}.D`),
+   decodes it with our own Steim reader, and resamples onto the grid.
+3. Crops to a **hybrid window**: the later of the near-epicentre significant
+   duration and the time for the S-wave to reach a coverage radius (~400 km), so
+   the wavefront's spread across the network stays visible even when a near-field
+   station's own shaking is brief.
+4. Writes an `events/<id>.json` in the same shape the app already understands and
    adds/updates its `catalog.json` entry.
 
+Downloaded day files and listings are **cached** under `data-raw/aws-cache/`
+(git-ignored), so re-running — e.g. to re-window or re-tune — costs no bandwidth.
+Delete that directory to force a fresh pull.
+
 Add or edit events in `scripts/events.ts`; tune channels (strong-motion `HNZ` is
-preferred over broadband `HHZ`), region, window, and thinning density in the
-`CONFIG` block at the top of the script.
+preferred over broadband `HHZ`), region, window, coverage radius, and thinning
+density in the `CONFIG` block at the top of the script.
 
 > **Note — why there are two datasets.** GeoNet's AWS bucket, FDSN service, and
 > data API are all hosted in AWS `ap-southeast-2` (Sydney). This repo was built
@@ -142,7 +151,7 @@ npm run build-sample      # → public/data/events/*.json + catalog.json
 ## Testing
 
 ```bash
-npm test                 # vitest, 101 tests
+npm test                 # vitest, 105 tests
 npm run coverage
 ```
 

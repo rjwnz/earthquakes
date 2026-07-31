@@ -62,6 +62,24 @@ export function robustMaxAbs(
   return abs[rank];
 }
 
+/**
+ * The scale to normalise a station against, with a floor tied to the network.
+ *
+ * Pure per-station normalisation divides each sensor by its own peak — but a
+ * station the waves haven't reached has a "peak" that is only instrument noise,
+ * which then blows up to full size. Flooring the scale at `floorFraction` of the
+ * network-wide `globalScale` means a station only approaches full amplitude once
+ * it actually reaches a meaningful fraction of the strongest shaking; quiet,
+ * not-yet-reached stations stay small.
+ */
+export function perStationScale(
+  ownScale: number,
+  globalScale: number,
+  floorFraction: number
+): number {
+  return Math.max(ownScale, globalScale * floorFraction);
+}
+
 export interface CircleStyle {
   /** Circle radius in pixels. */
   radius: number;

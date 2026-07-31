@@ -1,5 +1,10 @@
 import {describe, it, expect} from 'vitest';
-import {sampleTraceAt, robustMaxAbs, amplitudeToCircle} from './amplitude';
+import {
+  sampleTraceAt,
+  robustMaxAbs,
+  amplitudeToCircle,
+  perStationScale,
+} from './amplitude';
 
 describe('sampleTraceAt', () => {
   // samples at t = 1000, 1100, 1200 ms  (10 Hz, start 1000)
@@ -58,6 +63,28 @@ describe('robustMaxAbs', () => {
   it('rejects out-of-range percentiles', () => {
     expect(() => robustMaxAbs([1, 2], 0)).toThrow();
     expect(() => robustMaxAbs([1, 2], 1.5)).toThrow();
+  });
+});
+
+describe('perStationScale', () => {
+  const global = 100_000;
+  const floor = 0.05; // 5% of the network peak
+
+  it('uses the station peak when it is above the floor', () => {
+    expect(perStationScale(40_000, global, floor)).toBe(40_000);
+  });
+
+  it('floors a noise-only station to a fraction of the global peak', () => {
+    // A far, not-yet-reached station whose "peak" is a few counts of noise.
+    expect(perStationScale(3, global, floor)).toBe(5_000);
+  });
+
+  it('falls back to the floor when the station scale is zero', () => {
+    expect(perStationScale(0, global, floor)).toBe(5_000);
+  });
+
+  it('a zero floor leaves the station scale untouched', () => {
+    expect(perStationScale(3, global, 0)).toBe(3);
   });
 });
 

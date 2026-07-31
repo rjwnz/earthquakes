@@ -22,6 +22,7 @@
  * is embedded in the filename, so we match on the "-{CHA}.{NET}.D" suffix.)
  */
 import {readFileSync, writeFileSync, mkdirSync, existsSync} from 'node:fs';
+import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
   parseMiniseed,
@@ -65,6 +66,12 @@ const CONFIG = {
     tailS: 5,
     guardPreS: 30,
     maxSpanS: 600,
+    // Hybrid end: also keep the window open until the S-wave has swept out to
+    // `coverageRadiusKm`, so the wavefront's propagation across the network is
+    // visible even when a near-field station's own shaking is brief.
+    coverageRadiusKm: 400,
+    coverageVsKms: 3.0,
+    coverageTailS: 40,
   },
 
   /**
@@ -91,7 +98,17 @@ const CONFIG = {
   selectionCellDeg: 0.25,
   maxStations: 300,
   concurrency: 6,
+
+  /**
+   * Cache downloaded day files and listings under data-raw/aws-cache/ (git-
+   * ignored). Re-running — e.g. to re-window — then costs no bandwidth. Delete
+   * that directory to force a fresh pull.
+   */
+  useCache: true,
 };
+
+const CACHE_DIR = root + 'data-raw/aws-cache';
+const cachePath = (key: string) => `${CACHE_DIR}/${key}`;
 
 interface Station {
   code: string;
@@ -211,14 +228,38 @@ function selectStations(stations: Station[]): Station[] {
 
 // ---- S3 (anonymous, public bucket) ----
 
+function readCache(file: string): Buffer | null {
+  return CONFIG.useCache && existsSync(file) ? readFileSync(file) : null;
+}
+
+function writeCache(file: string, data: Buffer | string): void {
+  if (!CONFIG.useCache) return;
+  mkdirSync(dirname(file), {recursive: true});
+  writeFileSync(file, data);
+}
+
 async function s3Get(key: string): Promise<ArrayBuffer | null> {
+  const file = cachePath(key);
+  const cached = readCache(file);
+  if (cached) {
+    return cached.buffer.slice(
+      cached.byteOffset,
+      cached.byteOffset + cached.byteLength
+    );
+  }
   const res = await fetch(`${CONFIG.bucketBase}/${key}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`GET ${key} → ${res.status}`);
-  return res.arrayBuffer();
+  const ab = await res.arrayBuffer();
+  writeCache(file, Buffer.from(ab));
+  return ab;
 }
 
 async function s3ListKeys(prefix: string): Promise<string[]> {
+  const file = `${cachePath(prefix)}__listing.json`;
+  const cached = readCache(file);
+  if (cached) return JSON.parse(cached.toString('utf8')) as string[];
+
   const keys: string[] = [];
   let token: string | undefined;
   do {
@@ -235,6 +276,7 @@ async function s3ListKeys(prefix: string): Promise<string[]> {
     );
     token = t ? t[1] : undefined;
   } while (token);
+  writeCache(file, JSON.stringify(keys));
   return keys;
 }
 
@@ -384,7 +426,12 @@ async function buildEvent(cfg: EventConfig, outDir: string): Promise<void> {
         onsetMs: ctx.guardStartMs,
       };
   const startMs = win.startMs;
-  const endMs = win.endMs;
+  // Hybrid end: later of the near-field significant duration and the time for
+  // the S-wave to reach the coverage radius, capped at the downloaded span.
+  const {coverageRadiusKm, coverageVsKms, coverageTailS} = CONFIG.window;
+  const coverageEndMs =
+    originMs + (coverageRadiusKm / coverageVsKms + coverageTailS) * 1000;
+  const endMs = Math.min(ctx.guardEndMs, Math.max(win.endMs, coverageEndMs));
   const sampleCount = Math.round(
     ((endMs - startMs) / 1000) * CONFIG.outputRateHz
   );
