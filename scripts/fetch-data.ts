@@ -3,11 +3,13 @@
  *
  * This is the "real bundled event" pipeline. It runs on YOUR machine (which can
  * reach the bucket's ap-southeast-2 region), pulls raw miniSEED straight from
- * the public `geonet-open-data` S3 bucket, decodes it with our own reader, and
- * writes a dense `public/data/events/<id>.json` for every event in
- * `scripts/events.ts` (the same catalogue the sample builder uses), plus the
- * shared `catalog.json`. No AWS credentials, no aws-cli: the bucket is public,
- * so plain HTTPS GETs are enough.
+ * the public `geonet-open-data` S3 bucket, decodes it with our own reader,
+ * corrects each channel to SI ground acceleration (m/s²) using the instrument
+ * sensitivity from the FDSN station service — so amplitudes are comparable
+ * between stations — and writes a dense `public/data/events/<id>.json` for every
+ * event in `scripts/events.ts` (the same catalogue the sample builder uses),
+ * plus the shared `catalog.json`. No AWS credentials, no aws-cli: the bucket is
+ * public, so plain HTTPS GETs are enough.
  *
  *   npm run fetch-data
  *
@@ -31,6 +33,12 @@ import {
   type MiniseedRecord,
 } from '../src/data/miniseed';
 import {robustMaxAbs} from '../src/data/amplitude';
+import {
+  parseChannelResponse,
+  countsToAcceleration,
+  roundSignificant,
+  type ChannelResponse,
+} from '../src/data/response';
 import {estimateBaseline, resampleBoxAverage} from '../src/data/resample';
 import {detectShakingWindow} from '../src/data/window';
 import {decimateByGrid} from '../src/data/decimate';
@@ -49,6 +57,12 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const CONFIG = {
   /** Regional S3 endpoint for the public bucket (no signing required). */
   bucketBase: 'https://geonet-open-data.s3-ap-southeast-2.amazonaws.com',
+  /**
+   * FDSN station web service, used to fetch each channel's overall sensitivity
+   * (level=channel, text format) so raw counts can be corrected to SI ground
+   * acceleration. See src/data/response.ts.
+   */
+  stationServiceBase: 'https://service.geonet.org.nz/fdsnws/station/1/query',
   network: 'NZ',
 
   outputRateHz: 20,
@@ -280,9 +294,31 @@ async function s3ListKeys(prefix: string): Promise<string[]> {
   return keys;
 }
 
+/** A station's chosen vertical channel: its merged trace plus its identity. */
+interface StationRaw {
+  trace: Trace;
+  /** The channel code actually used, e.g. "HNZ". */
+  channel: string;
+  /** The location code from the archive filename, e.g. "20" (may be ""). */
+  location: string;
+}
+
+/**
+ * Pull the location code out of an archive key. Files are named
+ * `{YEAR}.{DOY}.{STA}.{LOC}-{CHA}.{NET}.D`, so the `{LOC}-{CHA}` pair is the
+ * fourth dot-field of the basename.
+ */
+function locationFromKey(key: string): string {
+  const base = key.slice(key.lastIndexOf('/') + 1);
+  const field = base.split('.')[3] ?? '';
+  const dash = field.lastIndexOf('-');
+  return dash >= 0 ? field.slice(0, dash) : '';
+}
+
 /**
  * Resolve and download the preferred vertical channel for a station, returning
- * its merged raw trace (native rate) over the guard span, or null.
+ * its merged raw trace (native rate) over the guard span plus which channel and
+ * location code it came from, or null.
  *
  * All of a station's channels live directly under `{STA}.{NET}/`, one file per
  * channel+location named `{YEAR}.{DOY}.{STA}.{LOC}-{CHA}.{NET}.D`, so we list
@@ -292,7 +328,7 @@ async function s3ListKeys(prefix: string): Promise<string[]> {
 async function fetchStationRaw(
   sta: Station,
   ctx: DayContext
-): Promise<Trace | null> {
+): Promise<StationRaw | null> {
   const net = CONFIG.network;
   const listings: Array<{keys: string[]}> = [];
   for (const day of ctx.days) {
@@ -312,9 +348,11 @@ async function fetchStationRaw(
   if (!chosen) return null;
 
   const records: MiniseedRecord[] = [];
+  let location = '';
   for (const {keys} of listings) {
     const key = keys.find(k => k.endsWith(`-${chosen}.${net}.D`));
     if (!key) continue;
+    location = locationFromKey(key);
     const buf = await s3Get(key);
     if (!buf) continue;
     // Lenient: real archive records can have the odd gap; skip integrity throws.
@@ -328,7 +366,53 @@ async function fetchStationRaw(
   if (records.length === 0) return null;
 
   const [trace] = mergeRecords(records);
-  return trace ?? null;
+  return trace ? {trace, channel: chosen, location} : null;
+}
+
+/** Fetch text from an HTTP endpoint, with the same on-disk cache as the bucket. */
+async function httpGetText(
+  url: string,
+  cacheKey: string
+): Promise<string | null> {
+  const file = cachePath(cacheKey);
+  const cached = readCache(file);
+  if (cached) return cached.toString('utf8');
+  const res = await fetch(url);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
+  const text = await res.text();
+  writeCache(file, text);
+  return text;
+}
+
+/**
+ * Fetch a channel's overall sensitivity + input units from the FDSN station
+ * service (level=channel, text format) so its counts can be corrected to SI
+ * acceleration. Returns null when no usable response is published.
+ */
+async function fetchChannelResponse(
+  sta: Station,
+  channel: string,
+  location: string,
+  ctx: DayContext,
+  atMs: number
+): Promise<ChannelResponse | null> {
+  const net = CONFIG.network;
+  const iso = (ms: number) => new Date(ms).toISOString().slice(0, 19);
+  const url = new URL(CONFIG.stationServiceBase);
+  url.searchParams.set('network', net);
+  url.searchParams.set('station', sta.code);
+  if (location) url.searchParams.set('location', location);
+  url.searchParams.set('channel', channel);
+  url.searchParams.set('level', 'channel');
+  url.searchParams.set('format', 'text');
+  url.searchParams.set('starttime', iso(ctx.guardStartMs));
+  url.searchParams.set('endtime', iso(ctx.guardEndMs));
+
+  const key = `station-meta/${net}.${sta.code}.${location || '--'}.${channel}.${ctx.days[0].year}.${ctx.days[0].doyStr}.txt`;
+  const text = await httpGetText(url.toString(), key);
+  if (!text) return null;
+  return parseChannelResponse(text, channel, location, atMs);
 }
 
 /** Resample a raw trace onto the final window, removing the pre-onset baseline. */
@@ -393,25 +477,46 @@ async function buildEvent(cfg: EventConfig, outDir: string): Promise<void> {
 
   let done = 0;
   const raw = await pool(selected, CONFIG.concurrency, async sta => {
-    let trace: Trace | null = null;
+    let got: StationRaw | null = null;
     try {
-      trace = await fetchStationRaw(sta, ctx);
+      got = await fetchStationRaw(sta, ctx);
     } catch (err) {
       console.warn(`  ${sta.code}: ${(err as Error).message}`);
     }
     done++;
     if (done % 50 === 0) console.log(`  …${done}/${selected.length}`);
-    return {sta, trace};
+    return {sta, got};
+  });
+
+  // Instrument response (overall sensitivity) for every station that returned a
+  // trace, so its counts can be corrected to SI acceleration. Fetched from the
+  // FDSN station service; a station whose response can't be resolved is dropped
+  // rather than left in incomparable raw counts.
+  const responses = await pool(raw, CONFIG.concurrency, async ({sta, got}) => {
+    if (!got) return null;
+    try {
+      return await fetchChannelResponse(
+        sta,
+        got.channel,
+        got.location,
+        ctx,
+        originMs
+      );
+    } catch (err) {
+      console.warn(`  ${sta.code} response: ${(err as Error).message}`);
+      return null;
+    }
   });
 
   // Detect the shaking window from the station nearest the epicentre that has
   // data, then crop every trace to it (matches scripts/build-sample.ts).
-  const withData = raw.filter(r => r.trace);
+  const withData = raw.filter(r => r.got);
   const nearest = nearestTo(
     withData.map(r => r.sta),
     cfg.event
   );
-  const nearestTrace = withData.find(r => r.sta.code === nearest?.code)?.trace;
+  const nearestTrace = withData.find(r => r.sta.code === nearest?.code)?.got
+    ?.trace;
   const win = nearestTrace
     ? detectShakingWindow(nearestTrace.samples, nearestTrace.startTimeMs, {
         sampleRateHz: nearestTrace.sampleRateHz,
@@ -436,16 +541,28 @@ async function buildEvent(cfg: EventConfig, outDir: string): Promise<void> {
     ((endMs - startMs) / 1000) * CONFIG.outputRateHz
   );
 
-  const sensors: SensorTrace[] = raw.map(({sta, trace}) =>
-    trace
-      ? {
-          ...sta,
-          samples: resampleTrace(trace, startMs, sampleCount, win.onsetMs),
-          hasData: true,
-          scale: 0,
-        }
-      : {...sta, samples: [], hasData: false, scale: 0}
-  );
+  let uncorrectable = 0;
+  const sensors: SensorTrace[] = raw.map(({sta, got}, i) => {
+    const response = responses[i];
+    if (got && response) {
+      // Raw counts on the common grid, then counts → SI acceleration (m/s²):
+      // divide by the channel's sensitivity, differentiating velocity sensors.
+      const counts = resampleTrace(
+        got.trace,
+        startMs,
+        sampleCount,
+        win.onsetMs
+      );
+      const accel = countsToAcceleration(
+        counts,
+        response,
+        CONFIG.outputRateHz
+      ).map(a => roundSignificant(a, 4));
+      return {...sta, samples: accel, hasData: true, scale: 0};
+    }
+    if (got && !response) uncorrectable++;
+    return {...sta, samples: [], hasData: false, scale: 0};
+  });
   for (const s of sensors) {
     if (s.hasData) s.scale = robustMaxAbs(s.samples, 0.995);
   }
@@ -453,7 +570,14 @@ async function buildEvent(cfg: EventConfig, outDir: string): Promise<void> {
   const recording = sensors.filter(s => s.hasData);
   const allSamples: number[] = [];
   for (const s of recording) allSamples.push(...s.samples);
-  const amplitudeScale = Math.max(1, robustMaxAbs(allSamples, 0.995));
+  // Robust network-wide scale for radius normalisation. No unit floor: the
+  // samples are now SI acceleration (order ~1 m/s²), so the old `Math.max(1, …)`
+  // guard — meant for large integer counts — would swamp the real scale. A tiny
+  // positive floor only guards against an all-zero degenerate network.
+  const amplitudeScale = Math.max(
+    Number.EPSILON,
+    robustMaxAbs(allSamples, 0.995)
+  );
 
   const dataset: ShakeDataset = {
     event: cfg.event,
@@ -461,7 +585,7 @@ async function buildEvent(cfg: EventConfig, outDir: string): Promise<void> {
     startMs,
     endMs,
     sampleRateHz: CONFIG.outputRateHz,
-    units: 'counts (uncorrected ground motion)',
+    units: 'm/s^2 (ground acceleration, sensitivity-corrected)',
     amplitudeScale,
     sensors,
   };
@@ -480,7 +604,9 @@ async function buildEvent(cfg: EventConfig, outDir: string): Promise<void> {
   console.log(
     `  window ${((startMs - originMs) / 1000).toFixed(0)}..` +
       `${((endMs - originMs) / 1000).toFixed(0)}s (ref ${nearest?.code ?? '—'}); ` +
-      `${recording.length}/${sensors.length} recording; ` +
+      `${recording.length}/${sensors.length} recording` +
+      (uncorrectable ? `, ${uncorrectable} dropped (no response)` : '') +
+      '; corrected to m/s²; ' +
       `${(JSON.stringify(dataset).length / 1024 / 1024).toFixed(1)} MB → ${file}`
   );
 }
