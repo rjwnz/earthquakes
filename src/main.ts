@@ -33,7 +33,7 @@ import {renderTraceStrip} from './render/traceStrip';
 import {PlaybackClock, SPEED_PRESETS} from './playback/clock';
 
 const coastline = coastlineJson as unknown as Coastline;
-const INITIAL_SPEED = 0.1;
+const INITIAL_SPEED = 1;
 const DECIMATION_CELL_PX = 26;
 const MAP_PADDING_PX = 30;
 const DATA_BASE = `${import.meta.env.BASE_URL}data/`;
@@ -127,7 +127,7 @@ async function bootstrap(): Promise<void> {
   // Seismogram of the station nearest the epicentre, shown in the timeline.
   let traceSamples: readonly number[] = [];
   let traceScale = 1;
-  let normalisation: Normalisation = 'per-station';
+  let normalisation: Normalisation = 'uniform';
   let amplitudeMode: AmplitudeMode = 'envelope';
   // Precomputed shaking envelope per sensor (parallel to dataset.sensors).
   let envelopes: number[][] = [];
