@@ -27,6 +27,7 @@ import {
   type Projector,
 } from './geo/projection';
 import {haversineKm, nearestTo, wavefrontRing} from './geo/distance';
+import {GEOLOGY_REGIONS} from './geo/geology';
 import {decimateByGrid, type Placed} from './data/decimate';
 import {robustMaxAbs} from './data/amplitude';
 import {shakingEnvelope} from './data/envelope';
@@ -38,6 +39,7 @@ import {
   type Normalisation,
   type AmplitudeMode,
   type Wavefronts,
+  type GeologyShape,
 } from './render/renderer';
 import {renderTraceStrip} from './render/traceStrip';
 import {PlaybackClock, SPEED_PRESETS} from './playback/clock';
@@ -226,11 +228,13 @@ async function bootstrap(): Promise<void> {
     faults: [],
     sensors: [],
     epicenter: null,
+    geology: [],
   };
   // Seismogram of the station nearest the epicentre, shown in the timeline.
   let traceSamples: readonly number[] = [];
   let traceScale = 1;
-  let normalisation: Normalisation = 'uniform';
+  // Uniform normalisation across the network (per-station mode was removed).
+  const normalisation: Normalisation = 'uniform';
   let amplitudeMode: AmplitudeMode = 'envelope';
   // Precomputed shaking envelope per sensor (parallel to dataset.sensors).
   let envelopes: number[][] = [];
@@ -239,6 +243,8 @@ async function bootstrap(): Promise<void> {
   let showWaves = true;
   // Optional major-faults overlay (off by default).
   let showFaults = false;
+  // Optional bedrock-geology overlay (off by default).
+  let showGeology = false;
   // Distance to the farthest recording sensor; the fronts stop just beyond it.
   let maxSensorKm = 0;
 
@@ -261,6 +267,7 @@ async function bootstrap(): Promise<void> {
         faults: [],
         sensors: [],
         epicenter: null,
+        geology: [],
       };
     const projectedCoast = coastline.rings.map(ring =>
       ring.map(([lon, lat]) => projector.project({lat, lon}))
@@ -268,6 +275,20 @@ async function bootstrap(): Promise<void> {
     const projectedFaults = faults.faults.map(f =>
       f.coords.map(([lon, lat]) => projector.project({lat, lon}))
     );
+    const geology: GeologyShape[] = GEOLOGY_REGIONS.map(region => {
+      const ring = region.ring.map(([lon, lat]) =>
+        projector.project({lat, lon})
+      );
+      // Label anchor = centroid in screen space (safe across the antimeridian).
+      const cx = ring.reduce((s, p) => s + p.x, 0) / ring.length;
+      const cy = ring.reduce((s, p) => s + p.y, 0) / ring.length;
+      return {
+        category: region.category,
+        label: region.label,
+        ring,
+        labelAt: {x: cx, y: cy},
+      };
+    });
     const placed: PlacedSensor[] = dataset.sensors.map((s, index) => {
       const p = projector.project({lat: s.lat, lon: s.lon});
       return {x: p.x, y: p.y, index};
@@ -306,6 +327,7 @@ async function bootstrap(): Promise<void> {
       faults: projectedFaults,
       sensors,
       epicenter: epi,
+      geology,
     };
   };
 
@@ -334,6 +356,7 @@ async function bootstrap(): Promise<void> {
       currentTimeMs,
       showFaults,
       wavefronts: computeWavefronts(elapsedSec),
+      showGeology,
     });
   };
 
@@ -867,16 +890,12 @@ async function bootstrap(): Promise<void> {
     return b;
   });
 
-  // ---- Loop + normalisation ----
+  // ---- Loop + amplitude mode ----
   el<HTMLInputElement>('loop-toggle').addEventListener('change', ev => {
     clock.setLoop((ev.target as HTMLInputElement).checked);
   });
   el<HTMLSelectElement>('amp-mode').addEventListener('change', ev => {
     amplitudeMode = (ev.target as HTMLSelectElement).value as AmplitudeMode;
-    drawMap();
-  });
-  el<HTMLSelectElement>('norm-toggle').addEventListener('change', ev => {
-    normalisation = (ev.target as HTMLSelectElement).value as Normalisation;
     drawMap();
   });
   el<HTMLInputElement>('waves-toggle').addEventListener('change', ev => {
@@ -887,6 +906,12 @@ async function bootstrap(): Promise<void> {
     showFaults = (ev.target as HTMLInputElement).checked;
     el('legend-faults').hidden = !showFaults;
     if (!showFaults) hideFaultTip();
+    drawMap();
+  });
+  const geoLegend = el('geo-legend');
+  el<HTMLInputElement>('geology-toggle').addEventListener('change', ev => {
+    showGeology = (ev.target as HTMLInputElement).checked;
+    geoLegend.hidden = !showGeology;
     drawMap();
   });
 

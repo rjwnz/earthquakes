@@ -14,10 +14,20 @@ import {
   amplitudeToCircle,
   perStationScale,
 } from '../data/amplitude';
+import {geologyCategory, type GeologyCategory} from '../geo/geology';
 
 export interface ScreenPoint {
   x: number;
   y: number;
+}
+
+/** A bedrock province projected to screen space (see geo/geology). */
+export interface GeologyShape {
+  category: GeologyCategory;
+  label: string;
+  ring: ScreenPoint[];
+  /** Where the province label is drawn (ring centroid). */
+  labelAt: ScreenPoint;
 }
 
 export interface RenderSensor {
@@ -69,6 +79,8 @@ export interface RenderStyle {
   coastlineWidth: number;
   /** Line width for the optional fault overlay. */
   faultWidth: number;
+  /** Opacity of the bedrock-geology overlay fills (0..1). */
+  geologyFillAlpha: number;
 }
 
 export const DEFAULT_STYLE: RenderStyle = {
@@ -84,11 +96,27 @@ export const DEFAULT_STYLE: RenderStyle = {
   sWave: 'rgba(255,255,255,0.7)',
   minRadius: 1.6,
   maxRadius: 22,
-  rangeDecades: 3,
+  // Two decades (100× range). A wider range (e.g. 3) is too generous at the
+  // quiet end: a far station sitting at ~1% of the network's peak — real but
+  // faint precursory motion, barely visible in its own seismogram — would swell
+  // to nearly half the maximum radius, reading as "already shaking" long before
+  // the wave truly arrives. Two decades keeps such precursors near the minimum
+  // while still resolving the genuinely-shaking stations.
+  rangeDecades: 2,
   perStationFloor: 0.05,
   coastlineWidth: 1,
   faultWidth: 1.1,
+  geologyFillAlpha: 0.5,
 };
+
+/** Parse a `#rrggbb` colour into an `rgba(...)` string at the given alpha. */
+function withAlpha(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 0xff;
+  const g = (n >> 8) & 0xff;
+  const b = n & 0xff;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 /** Expanding P and S wavefronts, as projected closed rings (null = not shown). */
 export interface Wavefronts {
@@ -106,6 +134,8 @@ export interface FrameContext {
   wavefronts?: Wavefronts | null;
   /** Whether to draw the optional major-faults overlay. */
   showFaults?: boolean;
+  /** Draw the bedrock-geology overlay this frame. */
+  showGeology?: boolean;
 }
 
 export interface Scene {
@@ -116,6 +146,8 @@ export interface Scene {
   faults: ScreenPoint[][];
   sensors: RenderSensor[];
   epicenter: ScreenPoint | null;
+  /** Projected bedrock provinces (empty if the overlay data is unavailable). */
+  geology: GeologyShape[];
 }
 
 function drawCoastline(
@@ -152,6 +184,63 @@ function drawFaults(
     for (let i = 1; i < line.length; i++) ctx.lineTo(line[i].x, line[i].y);
     ctx.stroke();
   }
+}
+
+/**
+ * Fill the bedrock-geology provinces, clipped to the land so no colour spills
+ * into the sea, then label each province. Drawn beneath the coastline stroke.
+ */
+function drawGeology(
+  ctx: CanvasRenderingContext2D,
+  coastline: ScreenPoint[][],
+  geology: GeologyShape[],
+  style: RenderStyle
+): void {
+  if (geology.length === 0) return;
+
+  ctx.save();
+  // Clip to the union of the coastline rings (the land mass).
+  ctx.beginPath();
+  for (const ring of coastline) {
+    if (ring.length < 3) continue;
+    ctx.moveTo(ring[0].x, ring[0].y);
+    for (let i = 1; i < ring.length; i++) ctx.lineTo(ring[i].x, ring[i].y);
+    ctx.closePath();
+  }
+  ctx.clip();
+
+  for (const region of geology) {
+    if (region.ring.length < 3) continue;
+    ctx.fillStyle = withAlpha(
+      geologyCategory(region.category).color,
+      style.geologyFillAlpha
+    );
+    ctx.beginPath();
+    ctx.moveTo(region.ring[0].x, region.ring[0].y);
+    for (let i = 1; i < region.ring.length; i++) {
+      ctx.lineTo(region.ring[i].x, region.ring[i].y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Labels sit above the fills but are not clipped, so coastal provinces stay
+  // legible. A dark halo keeps them readable over any colour.
+  ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  for (const region of geology) {
+    if (!region.label) continue;
+    const {x, y} = region.labelAt;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.72)';
+    ctx.strokeText(region.label, x, y);
+    ctx.fillStyle = withAlpha(geologyCategory(region.category).color, 0.95);
+    ctx.fillText(region.label, x, y);
+  }
+  ctx.textBaseline = 'alphabetic';
 }
 
 function drawWavefront(
@@ -218,6 +307,10 @@ export function renderFrame(
 ): void {
   ctx.fillStyle = style.background;
   ctx.fillRect(0, 0, scene.width, scene.height);
+
+  if (frame.showGeology) {
+    drawGeology(ctx, scene.coastline, scene.geology, style);
+  }
 
   drawCoastline(ctx, scene.coastline, style);
 

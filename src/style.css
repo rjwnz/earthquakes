@@ -493,13 +493,13 @@ body {
   border: 1.6px solid var(--accent);
 }
 
-.glyph.epi {
-  border-radius: 0;
-  position: relative;
-  border: 1.4px solid var(--accent);
-  border-radius: 50%;
-  width: 12px;
-  height: 12px;
+/* Ring + cross-hair, matching how the epicentre is drawn on the map. */
+.glyph-epi {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  overflow: visible;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .glyph.fault {
@@ -515,6 +515,31 @@ body {
 
 .glyph.pwave {
   border: 1.5px dashed rgba(255, 255, 255, 0.55);
+}
+
+#geo-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line);
+}
+
+.glyph.geo {
+  border-radius: 3px;
+}
+
+.glyph.geo.basement {
+  background: rgba(91, 141, 217, 0.6);
+}
+
+.glyph.geo.basin {
+  background: rgba(224, 163, 62, 0.6);
+}
+
+.glyph.geo.volcanic {
+  background: rgba(209, 73, 91, 0.6);
 }
 
 /* Controls */

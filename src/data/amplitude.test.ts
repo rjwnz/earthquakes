@@ -5,6 +5,7 @@ import {
   amplitudeToCircle,
   perStationScale,
 } from './amplitude';
+import {DEFAULT_STYLE} from '../render/renderer';
 
 describe('sampleTraceAt', () => {
   // samples at t = 1000, 1100, 1200 ms  (10 Hz, start 1000)
@@ -151,6 +152,25 @@ describe('amplitudeToCircle (log scale)', () => {
     expect(amplitudeToCircle(100, narrow).radius).toBeCloseTo(
       2 + 0.5 * span,
       9
+    );
+  });
+
+  it('keeps faint precursory motion small at the shipped default range', () => {
+    // Regression: a far station at ~1% of the network peak (real but faint
+    // precursor) must stay near the minimum radius, not swell to a large disc
+    // while its own seismogram still looks flat. Guards DEFAULT_STYLE.rangeDecades.
+    const style = DEFAULT_STYLE;
+    const at = (frac: number) =>
+      amplitudeToCircle(frac * 1000, {
+        scale: 1000,
+        minRadius: style.minRadius,
+        maxRadius: style.maxRadius,
+        rangeDecades: style.rangeDecades,
+      }).radius;
+    // 1% of scale collapses to the minimum; genuine shaking still resolves large.
+    expect(at(0.01)).toBeCloseTo(style.minRadius, 6);
+    expect(at(0.3)).toBeGreaterThan(
+      style.minRadius + 0.6 * (style.maxRadius - style.minRadius)
     );
   });
 
