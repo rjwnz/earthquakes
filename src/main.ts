@@ -42,6 +42,27 @@ const VP_KMS = 6.0;
 const VS_KMS = 3.5;
 const WAVE_MARGIN_KM = 60;
 
+// Wall-clock readout in New Zealand time (DST is resolved per event date, so
+// summer events read NZDT and winter events NZST).
+const NZ_TIME = new Intl.DateTimeFormat('en-NZ', {
+  timeZone: 'Pacific/Auckland',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+  timeZoneName: 'short',
+});
+
+function formatNzClock(epochMs: number): string {
+  const parts = NZ_TIME.formatToParts(new Date(epochMs));
+  const pick = (type: string) => parts.find(p => p.type === type)?.value ?? '';
+  const ms = String(Math.floor(((epochMs % 1000) + 1000) % 1000)).padStart(
+    3,
+    '0'
+  );
+  return `${pick('hour')}:${pick('minute')}:${pick('second')}.${ms} ${pick('timeZoneName')}`;
+}
+
 function el<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
   if (!found) throw new Error(`Missing #${id}`);
@@ -212,7 +233,7 @@ async function bootstrap(): Promise<void> {
     const rel = (epoch - dataset.event.originTimeMs) / 1000;
     const sign = rel >= 0 ? '+' : '−';
     timeOrigin.textContent = `${sign}${Math.abs(rel).toFixed(1)} s`;
-    timeUtc.textContent = `${new Date(epoch).toISOString().slice(11, 23)} UTC · relative to origin`;
+    timeUtc.textContent = `${formatNzClock(epoch)} · NZ time`;
     traceCanvas.setAttribute(
       'aria-valuenow',
       String(Math.round(clock.positionMs))
