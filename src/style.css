@@ -173,6 +173,45 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Hover tooltip over a fault line */
+#fault-tip {
+  position: absolute;
+  z-index: 6;
+  width: 232px;
+  padding: 0.5rem 0.65rem 0.55rem;
+  background: rgba(10, 10, 12, 0.94);
+  border: 1px solid var(--line);
+  border-left: 2px solid rgba(226, 140, 74, 0.85);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+
+#fault-tip[hidden] {
+  display: none;
+}
+
+#fault-tip-title {
+  font-weight: 650;
+  font-size: 0.83rem;
+  color: rgba(238, 170, 110, 0.95);
+}
+
+#fault-tip-blurb {
+  margin-top: 0.28rem;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: #d9d9de;
+}
+
+#fault-tip-meta {
+  margin-top: 0.32rem;
+  font-size: 0.68rem;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 /* About-this-earthquake panel (top-right, toggleable) */
 #event-info {
   position: absolute;
@@ -463,6 +502,13 @@ body {
   height: 12px;
 }
 
+.glyph.fault {
+  border-radius: 0;
+  width: 14px;
+  height: 0;
+  border-top: 2px solid rgba(226, 140, 74, 0.85);
+}
+
 .glyph.swave {
   border: 1.5px solid rgba(255, 255, 255, 0.7);
 }
@@ -589,18 +635,21 @@ input[type='checkbox'] {
 }
 
 /* "How it works" trigger + info dialog */
-#how-btn {
+#how-btn,
+#credits-btn {
   border-color: var(--accent);
   color: var(--accent);
   white-space: nowrap;
 }
 
-#how-btn:hover {
+#how-btn:hover,
+#credits-btn:hover {
   background: var(--accent);
   color: #000;
 }
 
-#how-dialog {
+#how-dialog,
+#credits-dialog {
   margin: auto;
   width: min(560px, calc(100% - 2rem));
   padding: 0;
@@ -611,7 +660,8 @@ input[type='checkbox'] {
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
 }
 
-#how-dialog::backdrop {
+#how-dialog::backdrop,
+#credits-dialog::backdrop {
   background: rgba(0, 0, 0, 0.62);
   backdrop-filter: blur(2px);
 }
@@ -750,6 +800,48 @@ input[type='checkbox'] {
 
 .how-links a:hover {
   text-decoration: none;
+}
+
+/* Credits dialog list */
+.credits-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.credits-list li {
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #d9d9de;
+}
+
+.credits-list .credit-what {
+  display: block;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-dim);
+  margin-bottom: 0.15rem;
+}
+
+.credits-list a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.credits-list a:hover {
+  text-decoration: none;
+}
+
+.credits-note {
+  margin: 1.2rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--ink-dim);
 }
 
 @media (max-width: 640px) {

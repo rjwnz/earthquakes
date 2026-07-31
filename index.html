@@ -19,6 +19,7 @@
           </div>
           <span id="sensor-count"></span>
           <button id="how-btn" type="button">How it works</button>
+          <button id="credits-btn" type="button">Credits</button>
         </div>
       </header>
 
@@ -36,6 +37,11 @@
           <canvas id="sensor-tip-trace"></canvas>
           <div id="sensor-tip-meta"></div>
         </div>
+        <div id="fault-tip" hidden>
+          <div id="fault-tip-title"></div>
+          <div id="fault-tip-blurb"></div>
+          <div id="fault-tip-meta"></div>
+        </div>
         <aside id="event-info" aria-label="About this earthquake">
           <div id="event-info-head">
             <h2 id="event-info-title">About this earthquake</h2>
@@ -52,6 +58,7 @@
         <div id="legend">
           <span class="legend-item"><span class="glyph solid"></span> shaking magnitude (disc size)</span>
           <span class="legend-item"><span class="glyph epi"></span> epicentre</span>
+          <span class="legend-item" id="legend-faults" hidden><span class="glyph fault"></span> major faults</span>
           <span class="legend-item"><span class="glyph swave"></span> S wavefront</span>
           <span class="legend-item"><span class="glyph pwave"></span> P wavefront</span>
         </div>
@@ -102,6 +109,11 @@
         <div class="control-group">
           <label class="control-label" for="waves-toggle">P/S waves</label>
           <input id="waves-toggle" type="checkbox" checked />
+        </div>
+
+        <div class="control-group">
+          <label class="control-label" for="faults-toggle">Faults</label>
+          <input id="faults-toggle" type="checkbox" />
         </div>
 
         <div class="control-group trace-caption">
@@ -185,6 +197,47 @@
               — how quakes work and how to stay safe
             </li>
           </ul>
+        </div>
+      </dialog>
+
+      <dialog id="credits-dialog" aria-labelledby="credits-title">
+        <div class="how-panel">
+          <button id="credits-close" class="how-close" type="button" aria-label="Close">×</button>
+          <h2 id="credits-title">Data &amp; credits</h2>
+
+          <ul class="credits-list">
+            <li>
+              <span class="credit-what">Seismograms</span>
+              Waveform data from
+              <a href="https://www.geonet.org.nz/" target="_blank" rel="noopener noreferrer">GeoNet</a>
+              (GNS Science / Toka Tū Ake — Earth Sciences New Zealand), used under
+              CC BY 3.0 NZ.
+            </li>
+            <li>
+              <span class="credit-what">Active faults</span>
+              Fault traces from the
+              <a href="https://github.com/GEMScienceTools/gem-global-active-faults" target="_blank" rel="noopener noreferrer">GEM Global Active Faults Database</a>
+              (GNS-derived for New Zealand), licensed CC BY-SA 4.0. Styron &amp;
+              Pagani (2020), <em>Earthquake Spectra</em>.
+            </li>
+            <li>
+              <span class="credit-what">Coastline</span>
+              <a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a>
+              1:50m land polygons (public domain).
+            </li>
+            <li>
+              <span class="credit-what">Event photos</span>
+              Individual images are from
+              <a href="https://commons.wikimedia.org/" target="_blank" rel="noopener noreferrer">Wikimedia Commons</a>
+              and the USGS — each photo carries its own author and licence in the
+              info panel.
+            </li>
+          </ul>
+
+          <p class="credits-note">
+            An educational visualisation, not an official hazard product. This
+            project is not affiliated with or endorsed by GeoNet or GNS Science.
+          </p>
         </div>
       </dialog>
     </div>

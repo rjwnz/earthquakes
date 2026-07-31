@@ -152,3 +152,24 @@ export type Ring = Array<[number, number]>;
 export interface Coastline {
   rings: Ring[];
 }
+
+/** One major active fault: an open polyline in [lon, lat] plus its attributes. */
+export interface Fault {
+  /** Fault (segment) name as published, e.g. "Hope Conway". */
+  name: string;
+  /** Style of movement, e.g. "Dextral", "Subduction_Thrust". */
+  slipType: string;
+  /** Mean net slip rate in mm/yr. */
+  slipRate: number;
+  /** The trace as a [lon, lat] polyline. */
+  coords: Ring;
+}
+
+/**
+ * Bundled major active-fault traces. Built from the GEM Global Active Faults
+ * Database (GNS-derived, CC BY-SA 4.0) by `scripts/build-faults.ts`, filtered
+ * to the higher slip-rate faults so the optional overlay stays legible.
+ */
+export interface FaultNetwork {
+  faults: Fault[];
+}

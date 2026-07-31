@@ -54,6 +54,7 @@ export interface RenderStyle {
   sensor: string;
   restSensor: string;
   epicenter: string;
+  fault: string;
   pWave: string;
   sWave: string;
   minRadius: number;
@@ -66,6 +67,8 @@ export interface RenderStyle {
    */
   perStationFloor: number;
   coastlineWidth: number;
+  /** Line width for the optional fault overlay. */
+  faultWidth: number;
 }
 
 export const DEFAULT_STYLE: RenderStyle = {
@@ -74,6 +77,9 @@ export const DEFAULT_STYLE: RenderStyle = {
   sensor: '#ffffff',
   restSensor: 'rgba(255,255,255,0.28)',
   epicenter: 'rgba(255,255,255,0.85)',
+  // A restrained warm accent — the geological convention for faults — kept
+  // subtle so it reads as background context under the seismic data.
+  fault: 'rgba(226,140,74,0.62)',
   pWave: 'rgba(255,255,255,0.4)',
   sWave: 'rgba(255,255,255,0.7)',
   minRadius: 1.6,
@@ -81,6 +87,7 @@ export const DEFAULT_STYLE: RenderStyle = {
   rangeDecades: 3,
   perStationFloor: 0.05,
   coastlineWidth: 1,
+  faultWidth: 1.1,
 };
 
 /** Expanding P and S wavefronts, as projected closed rings (null = not shown). */
@@ -97,12 +104,16 @@ export interface FrameContext {
   amplitudeMode: AmplitudeMode;
   currentTimeMs: number;
   wavefronts?: Wavefronts | null;
+  /** Whether to draw the optional major-faults overlay. */
+  showFaults?: boolean;
 }
 
 export interface Scene {
   width: number;
   height: number;
   coastline: ScreenPoint[][];
+  /** Projected major-fault polylines (drawn only when the overlay is on). */
+  faults: ScreenPoint[][];
   sensors: RenderSensor[];
   epicenter: ScreenPoint | null;
 }
@@ -121,6 +132,24 @@ function drawCoastline(
     ctx.moveTo(ring[0].x, ring[0].y);
     for (let i = 1; i < ring.length; i++) ctx.lineTo(ring[i].x, ring[i].y);
     ctx.closePath();
+    ctx.stroke();
+  }
+}
+
+function drawFaults(
+  ctx: CanvasRenderingContext2D,
+  lines: ScreenPoint[][],
+  style: RenderStyle
+): void {
+  ctx.strokeStyle = style.fault;
+  ctx.lineWidth = style.faultWidth;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (const line of lines) {
+    if (line.length < 2) continue;
+    ctx.beginPath();
+    ctx.moveTo(line[0].x, line[0].y);
+    for (let i = 1; i < line.length; i++) ctx.lineTo(line[i].x, line[i].y);
     ctx.stroke();
   }
 }
@@ -191,6 +220,10 @@ export function renderFrame(
   ctx.fillRect(0, 0, scene.width, scene.height);
 
   drawCoastline(ctx, scene.coastline, style);
+
+  if (frame.showFaults && scene.faults.length > 0) {
+    drawFaults(ctx, scene.faults, style);
+  }
 
   if (frame.wavefronts) drawWavefronts(ctx, frame.wavefronts, style);
 

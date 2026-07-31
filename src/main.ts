@@ -8,11 +8,14 @@
  */
 import './style.css';
 import coastlineJson from './geo/nz-coastline.json';
+import faultsJson from './geo/nz-faults.json';
 import type {
   Catalog,
   CatalogEntry,
   Coastline,
   EventInfoMap,
+  Fault,
+  FaultNetwork,
   SensorTrace,
   ShakeDataset,
 } from './data/types';
@@ -40,6 +43,7 @@ import {renderTraceStrip} from './render/traceStrip';
 import {PlaybackClock, SPEED_PRESETS} from './playback/clock';
 
 const coastline = coastlineJson as unknown as Coastline;
+const faults = faultsJson as unknown as FaultNetwork;
 const INITIAL_SPEED = 1;
 
 // Well-known reference earthquakes shown alongside the catalogue in the
@@ -48,6 +52,76 @@ const REFERENCE_QUAKES: ReadonlyArray<{label: string; mag: number}> = [
   {label: 'Napier, 1931', mag: 7.8},
   {label: 'Tōhoku, Japan 2011', mag: 9.1},
 ];
+
+// GEM slip-type codes → plain-language descriptions for fault tooltips.
+const SLIP_TYPE_TEXT: Record<string, string> = {
+  Dextral: 'right-lateral strike-slip fault',
+  Sinistral: 'left-lateral strike-slip fault',
+  Reverse: 'reverse (thrust) fault',
+  Normal: 'normal (extensional) fault',
+  'Dextral-Reverse': 'right-lateral strike-slip fault with reverse motion',
+  'Reverse-Dextral': 'reverse fault with right-lateral motion',
+  'Dextral-Normal': 'right-lateral strike-slip fault with normal motion',
+  'Normal-Dextral': 'normal fault with right-lateral motion',
+  Subduction_Thrust: 'subduction thrust',
+  Spreading_Ridge: 'spreading ridge',
+  Dextral_Transform: 'right-lateral transform fault',
+};
+
+// Curated one-line overviews for the iconic faults, keyed by the first word of
+// the fault name. Faults without an entry fall back to a slip-type description.
+const FAULT_NOTES: Record<string, {title: string; blurb: string}> = {
+  Alpine: {
+    title: 'Alpine Fault',
+    blurb:
+      "The boundary between the Pacific and Australian plates down the spine of the South Island — New Zealand's longest onland fault and its single biggest earthquake hazard.",
+  },
+  Hope: {
+    title: 'Hope Fault',
+    blurb:
+      'One of the fastest-slipping faults in the country, running from the Southern Alps into Marlborough; part of the Marlborough Fault System.',
+  },
+  Wellington: {
+    title: 'Wellington Fault',
+    blurb:
+      'Runs straight through the capital and the Hutt Valley — a major hazard for Wellington, capable of roughly a magnitude 7.5 quake.',
+  },
+  Wairarapa: {
+    title: 'Wairarapa Fault',
+    blurb:
+      "Ruptured in New Zealand's largest historical earthquake, the 1855 M8.2 Wairarapa quake, which lifted the Wellington coastline.",
+  },
+  Wairau: {
+    title: 'Wairau Fault',
+    blurb:
+      'The north-eastern continuation of the Alpine Fault into Marlborough, running along the Wairau Valley.',
+  },
+  Awatere: {
+    title: 'Awatere Fault',
+    blurb:
+      'A major Marlborough Fault System strand; its north-east section ruptured in the 1848 Marlborough earthquake.',
+  },
+  AwatereNortheast: {
+    title: 'Awatere Fault',
+    blurb:
+      'A major Marlborough Fault System strand; its north-east section ruptured in the 1848 Marlborough earthquake.',
+  },
+  Clarence: {
+    title: 'Clarence Fault',
+    blurb:
+      'One of the four main Marlborough Fault System faults, linking the Hope and Awatere systems.',
+  },
+  Kekerengu: {
+    title: 'Kekerengu Fault',
+    blurb:
+      'Ruptured spectacularly in the 2016 Kaikōura earthquake, tearing the ground by up to 10 m near the coast.',
+  },
+  Hikurangi: {
+    title: 'Hikurangi margin faults',
+    blurb:
+      'Faults above the Hikurangi subduction zone off the east coast of the North Island, where the Pacific Plate dives beneath New Zealand.',
+  },
+};
 const DECIMATION_CELL_PX = 26;
 const MAP_PADDING_PX = 30;
 const DATA_BASE = `${import.meta.env.BASE_URL}data/`;
@@ -134,6 +208,14 @@ async function bootstrap(): Promise<void> {
   }
   let hoveredSensor: RenderSensor | null = null;
 
+  // ---- Fault hover tooltip (name + overview) ----
+  const faultTip = el('fault-tip');
+  const faultTipTitle = el('fault-tip-title');
+  const faultTipBlurb = el('fault-tip-blurb');
+  const faultTipMeta = el('fault-tip-meta');
+  const FAULT_HIT_PX = 6;
+  let hoveredFault = -1;
+
   // ---- Per-event state, replaced on every loadEvent() ----
   let dataset: ShakeDataset | null = null;
   let bounds = {minLon: 0, maxLon: 1, minLat: 0, maxLat: 1};
@@ -141,6 +223,7 @@ async function bootstrap(): Promise<void> {
     width: 0,
     height: 0,
     coastline: [],
+    faults: [],
     sensors: [],
     epicenter: null,
   };
@@ -154,6 +237,8 @@ async function bootstrap(): Promise<void> {
   // Current projector (kept so wavefronts can be projected each frame).
   let projector: Projector | null = null;
   let showWaves = true;
+  // Optional major-faults overlay (off by default).
+  let showFaults = false;
   // Distance to the farthest recording sensor; the fronts stop just beyond it.
   let maxSensorKm = 0;
 
@@ -169,9 +254,19 @@ async function bootstrap(): Promise<void> {
     height: number
   ): Scene => {
     if (!dataset)
-      return {width, height, coastline: [], sensors: [], epicenter: null};
+      return {
+        width,
+        height,
+        coastline: [],
+        faults: [],
+        sensors: [],
+        epicenter: null,
+      };
     const projectedCoast = coastline.rings.map(ring =>
       ring.map(([lon, lat]) => projector.project({lat, lon}))
+    );
+    const projectedFaults = faults.faults.map(f =>
+      f.coords.map(([lon, lat]) => projector.project({lat, lon}))
     );
     const placed: PlacedSensor[] = dataset.sensors.map((s, index) => {
       const p = projector.project({lat: s.lat, lon: s.lon});
@@ -204,7 +299,14 @@ async function bootstrap(): Promise<void> {
     const withData = dataset.sensors.filter(s => s.hasData).length;
     el('sensor-count').textContent =
       `${sensors.length} shown · ${withData}/${dataset.sensors.length} recording · ${dataset.network}`;
-    return {width, height, coastline: projectedCoast, sensors, epicenter: epi};
+    return {
+      width,
+      height,
+      coastline: projectedCoast,
+      faults: projectedFaults,
+      sensors,
+      epicenter: epi,
+    };
   };
 
   const computeWavefronts = (elapsedSec: number): Wavefronts | null => {
@@ -230,6 +332,7 @@ async function bootstrap(): Promise<void> {
       normalisation,
       amplitudeMode,
       currentTimeMs,
+      showFaults,
       wavefronts: computeWavefronts(elapsedSec),
     });
   };
@@ -281,6 +384,7 @@ async function bootstrap(): Promise<void> {
     });
     scene = buildScene(projector, w, h);
     hideTip();
+    hideFaultTip();
     drawMap();
   };
 
@@ -627,21 +731,124 @@ async function bootstrap(): Promise<void> {
     tip.hidden = true;
   };
 
+  // ---- Fault hover: name + overview over the map (only when faults shown) ----
+  // Squared distance from point (px,py) to segment (ax,ay)-(bx,by).
+  const distSqToSegment = (
+    px: number,
+    py: number,
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number
+  ): number => {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    let t = lenSq === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const cx = ax + t * dx;
+    const cy = ay + t * dy;
+    return (px - cx) ** 2 + (py - cy) ** 2;
+  };
+
+  const findFaultAt = (cssX: number, cssY: number): number => {
+    let best = -1;
+    let bestDist = FAULT_HIT_PX * FAULT_HIT_PX;
+    for (let i = 0; i < scene.faults.length; i++) {
+      const line = scene.faults[i];
+      for (let j = 1; j < line.length; j++) {
+        const d = distSqToSegment(
+          cssX,
+          cssY,
+          line[j - 1].x,
+          line[j - 1].y,
+          line[j].x,
+          line[j].y
+        );
+        if (d <= bestDist) {
+          bestDist = d;
+          best = i;
+        }
+      }
+    }
+    return best;
+  };
+
+  const faultOverview = (f: Fault): {title: string; blurb: string} => {
+    const base = f.name.split(/\s+/)[0];
+    const note = FAULT_NOTES[base];
+    if (note) return note;
+    const kind = SLIP_TYPE_TEXT[f.slipType] ?? 'active fault';
+    const title = f.name.replace(/\s+\d+$/, '');
+    const blurb = `A ${kind} in New Zealand's active fault network.`;
+    return {title, blurb};
+  };
+
+  const positionFaultTip = (cssX: number, cssY: number): void => {
+    const off = 14;
+    const w = faultTip.offsetWidth;
+    const h = faultTip.offsetHeight;
+    let left = cssX + off;
+    let top = cssY + off;
+    if (left + w > scene.width - 4) left = cssX - w - off;
+    if (left < 4) left = 4;
+    if (top + h > scene.height - 4) top = cssY - h - off;
+    if (top < 4) top = 4;
+    faultTip.style.left = `${left}px`;
+    faultTip.style.top = `${top}px`;
+  };
+
+  const showFaultTip = (index: number, cssX: number, cssY: number): void => {
+    const f = faults.faults[index];
+    if (!f) return;
+    if (index !== hoveredFault) {
+      hoveredFault = index;
+      const {title, blurb} = faultOverview(f);
+      faultTipTitle.textContent = title;
+      faultTipBlurb.textContent = blurb;
+      const kind = SLIP_TYPE_TEXT[f.slipType] ?? 'active fault';
+      const cap = kind.charAt(0).toUpperCase() + kind.slice(1);
+      faultTipMeta.textContent = `${cap} · slips ~${f.slipRate} mm/yr`;
+      faultTip.hidden = false;
+    }
+    positionFaultTip(cssX, cssY);
+  };
+
+  const hideFaultTip = (): void => {
+    if (hoveredFault < 0) return;
+    hoveredFault = -1;
+    faultTip.hidden = true;
+  };
+
   mapCanvas.addEventListener('pointermove', ev => {
     if (ev.pointerType === 'touch') return;
     const rect = mapCanvas.getBoundingClientRect();
-    const found = findSensorAt(ev.clientX - rect.left, ev.clientY - rect.top);
-    if (found) {
-      if (found !== hoveredSensor) showTip(found);
-      else positionTip(found);
+    const cx = ev.clientX - rect.left;
+    const cy = ev.clientY - rect.top;
+
+    // Sensors take priority; faults are the background layer.
+    const sensor = findSensorAt(cx, cy);
+    if (sensor) {
+      if (sensor !== hoveredSensor) showTip(sensor);
+      else positionTip(sensor);
+      hideFaultTip();
+      mapCanvas.style.cursor = 'pointer';
+      return;
+    }
+    hideTip();
+
+    const faultIdx = showFaults ? findFaultAt(cx, cy) : -1;
+    if (faultIdx >= 0) {
+      showFaultTip(faultIdx, cx, cy);
       mapCanvas.style.cursor = 'pointer';
     } else {
-      hideTip();
+      hideFaultTip();
       mapCanvas.style.cursor = 'default';
     }
   });
   mapCanvas.addEventListener('pointerleave', () => {
     hideTip();
+    hideFaultTip();
     mapCanvas.style.cursor = 'default';
   });
 
@@ -676,27 +883,43 @@ async function bootstrap(): Promise<void> {
     showWaves = (ev.target as HTMLInputElement).checked;
     drawMap();
   });
-
-  // ---- "How it works" info dialog ----
-  const howDialog = el<HTMLDialogElement>('how-dialog');
-  const howPanel = howDialog.querySelector<HTMLElement>('.how-panel');
-  el('how-btn').addEventListener('click', () => howDialog.showModal());
-  el('how-close').addEventListener('click', () => howDialog.close());
-  // Click on the dim backdrop (outside the panel) closes the dialog.
-  howDialog.addEventListener('click', ev => {
-    if (!howPanel) return;
-    const r = howPanel.getBoundingClientRect();
-    const outside =
-      ev.clientX < r.left ||
-      ev.clientX > r.right ||
-      ev.clientY < r.top ||
-      ev.clientY > r.bottom;
-    if (outside) howDialog.close();
+  el<HTMLInputElement>('faults-toggle').addEventListener('change', ev => {
+    showFaults = (ev.target as HTMLInputElement).checked;
+    el('legend-faults').hidden = !showFaults;
+    if (!showFaults) hideFaultTip();
+    drawMap();
   });
 
-  // ---- Spacebar toggles playback (unless typing in a control) ----
+  // ---- Info dialogs ("How it works", "Credits") ----
+  const wireDialog = (dialogId: string, openId: string, closeId: string) => {
+    const dialog = el<HTMLDialogElement>(dialogId);
+    const panel = dialog.querySelector<HTMLElement>('.how-panel');
+    el(openId).addEventListener('click', () => dialog.showModal());
+    el(closeId).addEventListener('click', () => dialog.close());
+    // Click on the dim backdrop (outside the panel) closes the dialog.
+    dialog.addEventListener('click', ev => {
+      if (!panel) return;
+      const r = panel.getBoundingClientRect();
+      const outside =
+        ev.clientX < r.left ||
+        ev.clientX > r.right ||
+        ev.clientY < r.top ||
+        ev.clientY > r.bottom;
+      if (outside) dialog.close();
+    });
+    return dialog;
+  };
+  const howDialog = wireDialog('how-dialog', 'how-btn', 'how-close');
+  const creditsDialog = wireDialog(
+    'credits-dialog',
+    'credits-btn',
+    'credits-close'
+  );
+
+  // ---- Spacebar toggles playback (unless typing in a control or in a dialog) ----
   window.addEventListener('keydown', ev => {
-    if (ev.code === 'Space' && ev.target !== select && !howDialog.open) {
+    const dialogOpen = howDialog.open || creditsDialog.open;
+    if (ev.code === 'Space' && ev.target !== select && !dialogOpen) {
       ev.preventDefault();
       clock.toggle();
       playBtn.textContent = clock.isPlaying ? '⏸' : '▶';
