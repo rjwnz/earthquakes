@@ -19,10 +19,10 @@ import {robustMaxAbs} from '../src/data/amplitude';
 import {estimateBaseline, resampleBoxAverage} from '../src/data/resample';
 import {detectShakingWindow} from '../src/data/window';
 import {nearestTo} from '../src/geo/distance';
+import {EVENTS, type EventConfig} from './events';
 import type {
   ShakeDataset,
   SensorTrace,
-  EventMeta,
   Catalog,
   CatalogEntry,
 } from '../src/data/types';
@@ -49,77 +49,6 @@ const STATIONS: Array<{code: string; name: string; lat: number; lon: number}> =
     {code: 'CTZ', name: 'Chatham Island', lat: -43.73549, lon: -176.61719},
     {code: 'ODZ', name: 'Otahua Downs', lat: -45.043982, lon: 170.644622},
   ];
-
-interface EventConfig {
-  id: string;
-  mseed: string;
-  date: string;
-  region: string;
-  event: EventMeta;
-}
-
-const EVENTS: EventConfig[] = [
-  {
-    id: 'kaikoura-2016',
-    mseed: 'kaikoura_hhz.mseed',
-    date: '14 Nov 2016',
-    region: 'Kaikōura, Marlborough',
-    event: {
-      id: '2016p858000',
-      name: 'Kaikōura M7.8 — 14 Nov 2016',
-      originTimeMs: Date.parse('2016-11-13T11:02:56Z'),
-      lat: -42.737,
-      lon: 173.054,
-      depthKm: 15,
-      magnitude: 7.8,
-    },
-  },
-  {
-    id: 'christchurch-2011',
-    mseed: 'christchurch-2011_hhz.mseed',
-    date: '22 Feb 2011',
-    region: 'Christchurch, Canterbury',
-    event: {
-      id: '2011p079088',
-      name: 'Christchurch M6.2 — 22 Feb 2011',
-      originTimeMs: Date.parse('2011-02-21T23:51:42Z'),
-      lat: -43.58,
-      lon: 172.68,
-      depthKm: 5,
-      magnitude: 6.2,
-    },
-  },
-  {
-    id: 'darfield-2010',
-    mseed: 'darfield-2010_hhz.mseed',
-    date: '4 Sep 2010',
-    region: 'Darfield, Canterbury',
-    event: {
-      id: '3366146',
-      name: 'Darfield M7.1 — 4 Sep 2010',
-      originTimeMs: Date.parse('2010-09-03T16:35:46Z'),
-      lat: -43.53,
-      lon: 172.12,
-      depthKm: 11,
-      magnitude: 7.1,
-    },
-  },
-  {
-    id: 'dusky-sound-2009',
-    mseed: 'dusky-sound-2009_hhz.mseed',
-    date: '15 Jul 2009',
-    region: 'Dusky Sound, Fiordland',
-    event: {
-      id: '3124785',
-      name: 'Dusky Sound M7.8 — 15 Jul 2009',
-      originTimeMs: Date.parse('2009-07-15T09:22:29Z'),
-      lat: -45.76,
-      lon: 166.56,
-      depthKm: 12,
-      magnitude: 7.8,
-    },
-  },
-];
 
 function resample(
   trace: Trace,
@@ -150,7 +79,7 @@ function buildEvent(cfg: EventConfig): {
   recording: number;
   window: {startS: number; endS: number; ref: string};
 } {
-  const buf = readFileSync(`${RAW_DIR}/${cfg.mseed}`);
+  const buf = readFileSync(`${RAW_DIR}/${cfg.sampleMseed}`);
   const traces = mergeRecords(parseMiniseed(buf, {validateSteim: true}));
   const byStation = new Map(traces.map(t => [t.station, t]));
 
@@ -210,8 +139,8 @@ function main(): void {
   const catalog: Catalog = {events: []};
 
   for (const cfg of EVENTS) {
-    if (!existsSync(`${RAW_DIR}/${cfg.mseed}`)) {
-      console.warn(`skip ${cfg.id}: missing data-raw/${cfg.mseed}`);
+    if (!existsSync(`${RAW_DIR}/${cfg.sampleMseed}`)) {
+      console.warn(`skip ${cfg.id}: missing data-raw/${cfg.sampleMseed}`);
       continue;
     }
     const {dataset, recording, window} = buildEvent(cfg);

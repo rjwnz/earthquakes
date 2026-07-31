@@ -84,30 +84,33 @@ over. Rebuild them from the raw miniSEED with:
 npm run build-sample     # data-raw/<id>_hhz.mseed → public/data/events/*.json + catalog.json
 ```
 
-### 2. The full dense dataset (GeoNet AWS Open Data)
+### 2. The full dense datasets (GeoNet AWS Open Data)
 
 For the *dense* network (hundreds of strong-motion + broadband sensors), run the
-pipeline against GeoNet's public [AWS Open Data bucket](https://registry.opendata.aws/geonet/):
+pipeline against GeoNet's public [AWS Open Data bucket](https://registry.opendata.aws/geonet/).
+It builds the dense version of **every event** in
+[`scripts/events.ts`](scripts/events.ts) — the same catalogue the sample builder
+uses — so the sample and dense datasets stay in lockstep:
 
 ```bash
-npm run fetch-data       # → public/data/events/<datasetId>.json, upserts catalog.json
+npm run fetch-data       # → public/data/events/*.json (all events) + catalog.json
 ```
 
-[`scripts/fetch-data.ts`](scripts/fetch-data.ts):
+For each event, [`scripts/fetch-data.ts`](scripts/fetch-data.ts):
 
 1. Reads the GeoNet station catalogue (`data-raw/delta_stations.csv`), keeps
-   stations active on the event date and inside the NZ region, and **thins them
-   to one representative per grid cell** (the data-layer twin of the map's
-   on-screen decimation) so it doesn't download the entire archive.
-2. For each station, GETs the day's miniSEED straight from the public S3 bucket
-   (no credentials, plain HTTPS), decodes it with our own Steim reader, windows
-   it to the event, and resamples onto the common grid.
+   stations active **on that event's date** and inside the NZ region, and
+   **thins them to one representative per grid cell** (the data-layer twin of the
+   map's on-screen decimation) so it doesn't download the entire archive.
+2. For each station, GETs that day's miniSEED straight from the public S3 bucket
+   (no credentials, plain HTTPS), decodes it with our own Steim reader, detects
+   the shaking window from the nearest station, and resamples onto the grid.
 3. Writes an `events/<id>.json` in the same shape the app already understands and
    adds/updates its `catalog.json` entry.
 
-Configure the event (id, metadata, time window), channels (strong-motion `HNZ`
-is preferred over broadband `HHZ`), region, and thinning density in the `CONFIG`
-block at the top of the script.
+Add or edit events in `scripts/events.ts`; tune channels (strong-motion `HNZ` is
+preferred over broadband `HHZ`), region, window, and thinning density in the
+`CONFIG` block at the top of the script.
 
 > **Note — why there are two datasets.** GeoNet's AWS bucket, FDSN service, and
 > data API are all hosted in AWS `ap-southeast-2` (Sydney). This repo was built

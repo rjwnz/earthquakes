@@ -1,18 +1,19 @@
 /**
- * GeoNet AWS Open Data pipeline — build the FULL dense dataset.
+ * GeoNet AWS Open Data pipeline — build the FULL dense datasets.
  *
  * This is the "real bundled event" pipeline. It runs on YOUR machine (which can
  * reach the bucket's ap-southeast-2 region), pulls raw miniSEED straight from
  * the public `geonet-open-data` S3 bucket, decodes it with our own reader, and
- * writes `public/data/event.json` — the exact same shape the app already loads
- * from the checked-in sample. No AWS credentials, no aws-cli: the bucket is
- * public, so plain HTTPS GETs are enough.
+ * writes a dense `public/data/events/<id>.json` for every event in
+ * `scripts/events.ts` (the same catalogue the sample builder uses), plus the
+ * shared `catalog.json`. No AWS credentials, no aws-cli: the bucket is public,
+ * so plain HTTPS GETs are enough.
  *
  *   npm run fetch-data
  *
- * Configure via the CONFIG block below (event, time window, channels, how
- * densely to sample the network). Everything is dependency-free and reuses the
- * unit-tested transforms in src/data.
+ * The events come from scripts/events.ts; tune the download/window behaviour in
+ * the CONFIG block below (channels, window, how densely to sample the network).
+ * Everything is dependency-free and reuses the unit-tested transforms in src/data.
  *
  * Bucket & registry: https://registry.opendata.aws/geonet/
  * Layout (SeisComP SDS): waveforms/miniseed/{YEAR}/{NET}/{STA}/{CHA}.D/{NET}.{STA}.{LOC}.{CHA}.D.{YEAR}.{DOY}
@@ -26,10 +27,10 @@ import {detectShakingWindow} from '../src/data/window';
 import {decimateByGrid} from '../src/data/decimate';
 import {wrapLongitude} from '../src/geo/projection';
 import {nearestTo} from '../src/geo/distance';
+import {EVENTS, type EventConfig} from './events';
 import type {
   ShakeDataset,
   SensorTrace,
-  EventMeta,
   Catalog,
   CatalogEntry,
 } from '../src/data/types';
@@ -40,21 +41,6 @@ const CONFIG = {
   /** Regional S3 endpoint for the public bucket (no signing required). */
   bucketBase: 'https://geonet-open-data.s3-ap-southeast-2.amazonaws.com',
   network: 'NZ',
-
-  /** Catalogue metadata for this run (writes public/data/events/<datasetId>.json). */
-  datasetId: 'kaikoura-2016',
-  date: '14 Nov 2016',
-  region: 'Kaikōura, Marlborough',
-
-  event: {
-    id: '2016p858000',
-    name: 'Kaikōura M7.8 — 14 Nov 2016',
-    originTimeMs: Date.parse('2016-11-13T11:02:56Z'),
-    lat: -42.737,
-    lon: 173.054,
-    depthKm: 15,
-    magnitude: 7.8,
-  } as EventMeta,
 
   outputRateHz: 20,
 
@@ -99,11 +85,6 @@ const CONFIG = {
   concurrency: 6,
 };
 
-// Generous span of raw data to pull while searching for the shaking window.
-const GUARD_START_MS =
-  CONFIG.event.originTimeMs - CONFIG.window.guardPreS * 1000;
-const GUARD_END_MS = CONFIG.event.originTimeMs + CONFIG.window.maxSpanS * 1000;
-
 interface Station {
   code: string;
   name: string;
@@ -111,9 +92,35 @@ interface Station {
   lon: number;
 }
 
+/** Per-event day/window context, computed from the event origin. */
+interface DayContext {
+  year: number;
+  doyStr: string;
+  guardStartMs: number;
+  guardEndMs: number;
+}
+
+function dayContext(originMs: number): DayContext {
+  const guardStartMs = originMs - CONFIG.window.guardPreS * 1000;
+  const d = new Date(guardStartMs);
+  const year = d.getUTCFullYear();
+  const startOfYear = Date.UTC(year, 0, 1);
+  const doy =
+    Math.floor(
+      (Date.UTC(year, d.getUTCMonth(), d.getUTCDate()) - startOfYear) /
+        86_400_000
+    ) + 1;
+  return {
+    year,
+    doyStr: String(doy).padStart(3, '0'),
+    guardStartMs,
+    guardEndMs: originMs + CONFIG.window.maxSpanS * 1000,
+  };
+}
+
 // ---- delta station catalogue (from GitHub, or a local copy) ----
 
-function loadStations(): Station[] {
+function loadStations(eventMs: number): Station[] {
   const local = root + 'data-raw/delta_stations.csv';
   let csv: string;
   if (existsSync(local)) {
@@ -134,7 +141,6 @@ function loadStations(): Station[] {
   const iLon = col('Longitude');
   const iStart = col('Start Date');
   const iEnd = col('End Date');
-  const eventMs = CONFIG.event.originTimeMs;
 
   const byCode = new Map<string, Station>();
   for (let i = 1; i < lines.length; i++) {
@@ -205,34 +211,23 @@ async function s3ListKeys(prefix: string): Promise<string[]> {
   return keys;
 }
 
-const doy = (() => {
-  const d = new Date(GUARD_START_MS);
-  const startOfYear = Date.UTC(d.getUTCFullYear(), 0, 1);
-  return (
-    Math.floor(
-      (Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) -
-        startOfYear) /
-        86_400_000
-    ) + 1
-  );
-})();
-const year = new Date(GUARD_START_MS).getUTCFullYear();
-const doyStr = String(doy).padStart(3, '0');
-
 /**
  * Resolve and download the first available vertical channel for a station,
  * returning its merged raw trace (native rate) over the guard span, or null.
  */
-async function fetchStationRaw(sta: Station): Promise<Trace | null> {
+async function fetchStationRaw(
+  sta: Station,
+  ctx: DayContext
+): Promise<Trace | null> {
   for (const cha of CONFIG.channels) {
-    const prefix = `waveforms/miniseed/${year}/${CONFIG.network}/${sta.code}/${cha}.D/`;
+    const prefix = `waveforms/miniseed/${ctx.year}/${CONFIG.network}/${sta.code}/${cha}.D/`;
     let keys: string[];
     try {
       keys = await s3ListKeys(prefix);
     } catch {
       continue;
     }
-    const key = keys.find(k => k.endsWith(`.${year}.${doyStr}`));
+    const key = keys.find(k => k.endsWith(`.${ctx.year}.${ctx.doyStr}`));
     if (!key) continue;
 
     const buf = await s3Get(key);
@@ -241,7 +236,7 @@ async function fetchStationRaw(sta: Station): Promise<Trace | null> {
     // Lenient: real archive records can have the odd gap; skip integrity throws.
     const records = parseMiniseed(buf, {validateSteim: false}).filter(r => {
       const recEnd = r.startTimeMs + (r.numSamples / r.sampleRateHz) * 1000;
-      return r.startTimeMs < GUARD_END_MS && recEnd > GUARD_START_MS;
+      return r.startTimeMs < ctx.guardEndMs && recEnd > ctx.guardStartMs;
     });
     if (records.length === 0) continue;
 
@@ -298,24 +293,28 @@ async function pool<T, R>(
   return out;
 }
 
-async function main(): Promise<void> {
-  const all = loadStations();
+/** Build the full dense dataset for one event and write it + its catalogue entry. */
+async function buildEvent(cfg: EventConfig, outDir: string): Promise<void> {
+  const originMs = cfg.event.originTimeMs;
+  const ctx = dayContext(originMs);
+
+  const all = loadStations(originMs);
   const selected = selectStations(all);
   console.log(
-    `delta: ${all.length} stations in region, thinned to ${selected.length} ` +
-      `(cell ${CONFIG.selectionCellDeg}°). Downloading ${year}.${doyStr} …`
+    `\n${cfg.id}: ${all.length} stations in region → ${selected.length} selected ` +
+      `(cell ${CONFIG.selectionCellDeg}°). Downloading ${ctx.year}.${ctx.doyStr} …`
   );
 
   let done = 0;
   const raw = await pool(selected, CONFIG.concurrency, async sta => {
     let trace: Trace | null = null;
     try {
-      trace = await fetchStationRaw(sta);
+      trace = await fetchStationRaw(sta, ctx);
     } catch (err) {
       console.warn(`  ${sta.code}: ${(err as Error).message}`);
     }
     done++;
-    if (done % 20 === 0) console.log(`  …${done}/${selected.length}`);
+    if (done % 50 === 0) console.log(`  …${done}/${selected.length}`);
     return {sta, trace};
   });
 
@@ -324,7 +323,7 @@ async function main(): Promise<void> {
   const withData = raw.filter(r => r.trace);
   const nearest = nearestTo(
     withData.map(r => r.sta),
-    CONFIG.event
+    cfg.event
   );
   const nearestTrace = withData.find(r => r.sta.code === nearest?.code)?.trace;
   const win = nearestTrace
@@ -335,16 +334,15 @@ async function main(): Promise<void> {
         preRollS: CONFIG.window.preRollS,
         tailS: CONFIG.window.tailS,
       })
-    : {startMs: GUARD_START_MS, endMs: GUARD_END_MS, onsetMs: GUARD_START_MS};
+    : {
+        startMs: ctx.guardStartMs,
+        endMs: ctx.guardEndMs,
+        onsetMs: ctx.guardStartMs,
+      };
   const startMs = win.startMs;
   const endMs = win.endMs;
   const sampleCount = Math.round(
     ((endMs - startMs) / 1000) * CONFIG.outputRateHz
-  );
-  console.log(
-    `window: ${((startMs - CONFIG.event.originTimeMs) / 1000).toFixed(0)}..` +
-      `${((endMs - CONFIG.event.originTimeMs) / 1000).toFixed(0)}s from origin` +
-      (nearest ? ` (ref ${nearest.code})` : '')
   );
 
   const sensors: SensorTrace[] = raw.map(({sta, trace}) =>
@@ -367,7 +365,7 @@ async function main(): Promise<void> {
   const amplitudeScale = Math.max(1, robustMaxAbs(allSamples, 0.995));
 
   const dataset: ShakeDataset = {
-    event: CONFIG.event,
+    event: cfg.event,
     network: CONFIG.network,
     startMs,
     endMs,
@@ -377,24 +375,33 @@ async function main(): Promise<void> {
     sensors,
   };
 
-  const outDir = root + 'public/data';
-  const file = `events/${CONFIG.datasetId}.json`;
-  mkdirSync(outDir + '/events', {recursive: true});
+  const file = `events/${cfg.id}.json`;
   writeFileSync(`${outDir}/${file}`, JSON.stringify(dataset));
-
-  // Upsert this event into the catalogue the app reads.
   upsertCatalog(outDir + '/catalog.json', {
-    id: CONFIG.datasetId,
-    name: CONFIG.event.name,
-    date: CONFIG.date,
-    magnitude: CONFIG.event.magnitude,
-    region: CONFIG.region,
+    id: cfg.id,
+    name: cfg.event.name,
+    date: cfg.date,
+    magnitude: cfg.event.magnitude,
+    region: cfg.region,
     file,
   });
 
   console.log(
-    `\nWrote public/data/${file} — ${sensors.length} sensors, ` +
-      `${recording.length} with data, ${(JSON.stringify(dataset).length / 1024 / 1024).toFixed(1)} MB`
+    `  window ${((startMs - originMs) / 1000).toFixed(0)}..` +
+      `${((endMs - originMs) / 1000).toFixed(0)}s (ref ${nearest?.code ?? '—'}); ` +
+      `${recording.length}/${sensors.length} recording; ` +
+      `${(JSON.stringify(dataset).length / 1024 / 1024).toFixed(1)} MB → ${file}`
+  );
+}
+
+async function main(): Promise<void> {
+  const outDir = root + 'public/data';
+  mkdirSync(outDir + '/events', {recursive: true});
+  for (const cfg of EVENTS) {
+    await buildEvent(cfg, outDir);
+  }
+  console.log(
+    `\nDone: ${EVENTS.length} events → public/data/events/, catalog.json updated.`
   );
 }
 
