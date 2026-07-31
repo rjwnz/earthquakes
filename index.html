@@ -18,6 +18,7 @@
             <select id="event-select" aria-label="Choose earthquake"></select>
           </div>
           <span id="sensor-count"></span>
+          <button id="how-btn" type="button">How it works</button>
         </div>
       </header>
 
@@ -94,6 +95,85 @@
           <span id="trace-caption">Timeline: seismogram of the nearest station — click or drag to scrub</span>
         </div>
       </section>
+
+      <dialog id="how-dialog" aria-labelledby="how-title">
+        <div class="how-panel">
+          <button id="how-close" class="how-close" type="button" aria-label="Close">×</button>
+          <h2 id="how-title">How this map works</h2>
+
+          <p class="how-lede">
+            An earthquake happens when giant slabs of rock deep underground
+            suddenly slip and shake. Aotearoa New Zealand sits right where two
+            of these slabs push against each other, so we feel a
+            <em>lot</em> of earthquakes!
+          </p>
+
+          <ul class="how-points">
+            <li>
+              <span class="how-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor" /></svg>
+              </span>
+              <p>
+                <strong>The dots are shake detectors.</strong>
+                Scientists have placed hundreds of machines called
+                <em>seismometers</em> all around the country — each dot is one
+                of them. When shaking reaches a dot it grows bigger. The bigger
+                the dot, the harder the ground is moving.
+              </p>
+            </li>
+            <li>
+              <span class="how-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.6" />
+                  <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 3" />
+                </svg>
+              </span>
+              <p>
+                <strong>The rings are the earthquake's waves.</strong>
+                A quake sends out waves, a bit like ripples when you drop a
+                stone in a pond. The speedy <em>P wave</em> (dashed ring)
+                arrives first, then the slower but stronger <em>S wave</em>
+                (solid ring). They spread out from the <em>epicentre</em> — the
+                spot right above where the quake began.
+              </p>
+            </li>
+            <li>
+              <span class="how-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M2 12 L6 12 L8 5 L11 19 L14 8 L16 12 L22 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" />
+                </svg>
+              </span>
+              <p>
+                <strong>The wiggly line is real.</strong>
+                The line along the bottom is a <em>seismogram</em> — an actual
+                recording of the ground jiggling up and down. Drag along it to
+                travel backwards and forwards through the earthquake.
+              </p>
+            </li>
+          </ul>
+
+          <p class="how-tip">
+            ✦ Hover over any dot to see that station's name and its very own
+            wiggly recording.
+          </p>
+
+          <h3>Want to find out more?</h3>
+          <ul class="how-links">
+            <li>
+              <a href="https://www.geonet.org.nz/earthquake" target="_blank" rel="noopener noreferrer">GeoNet</a>
+              — watch New Zealand's real earthquakes as they happen
+            </li>
+            <li>
+              <a href="https://earthquake.usgs.gov/learn/kids/" target="_blank" rel="noopener noreferrer">USGS Earthquakes for Kids</a>
+              — cool facts, animations and experiments to try
+            </li>
+            <li>
+              <a href="https://kids.nationalgeographic.com/science/article/earthquake" target="_blank" rel="noopener noreferrer">Nat Geo Kids: Earthquakes</a>
+              — how quakes work and how to stay safe
+            </li>
+          </ul>
+        </div>
+      </dialog>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

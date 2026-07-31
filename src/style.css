@@ -340,6 +340,170 @@ input[type='checkbox'] {
   cursor: pointer;
 }
 
+/* "How it works" trigger + info dialog */
+#how-btn {
+  border-color: var(--accent);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+#how-btn:hover {
+  background: var(--accent);
+  color: #000;
+}
+
+#how-dialog {
+  margin: auto;
+  width: min(560px, calc(100% - 2rem));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+#how-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(2px);
+}
+
+.how-panel {
+  position: relative;
+  padding: 1.7rem 1.8rem 1.9rem;
+  max-height: 84vh;
+  overflow-y: auto;
+}
+
+.how-close {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--ink-dim);
+}
+
+.how-close:hover {
+  color: var(--ink);
+}
+
+.how-panel h2 {
+  margin: 0 2rem 0.8rem 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.how-panel h3 {
+  margin: 1.5rem 0 0.6rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-dim);
+}
+
+.how-lede {
+  margin: 0 0 1.1rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.how-lede em {
+  font-style: normal;
+  font-weight: 650;
+}
+
+.how-points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+}
+
+.how-points li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.how-points p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #d9d9de;
+}
+
+.how-points strong {
+  color: var(--ink);
+}
+
+.how-points em {
+  font-style: italic;
+  color: var(--ink);
+}
+
+.how-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--accent);
+  margin-top: 0.1rem;
+}
+
+.how-icon svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.how-tip {
+  margin: 1.2rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+
+.how-links {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.how-links li {
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+
+.how-links a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.how-links a:hover {
+  text-decoration: none;
+}
+
 @media (max-width: 640px) {
   #time-origin {
     font-size: 1.2rem;

@@ -505,9 +505,26 @@ async function bootstrap(): Promise<void> {
     drawMap();
   });
 
+  // ---- "How it works" info dialog ----
+  const howDialog = el<HTMLDialogElement>('how-dialog');
+  const howPanel = howDialog.querySelector<HTMLElement>('.how-panel');
+  el('how-btn').addEventListener('click', () => howDialog.showModal());
+  el('how-close').addEventListener('click', () => howDialog.close());
+  // Click on the dim backdrop (outside the panel) closes the dialog.
+  howDialog.addEventListener('click', ev => {
+    if (!howPanel) return;
+    const r = howPanel.getBoundingClientRect();
+    const outside =
+      ev.clientX < r.left ||
+      ev.clientX > r.right ||
+      ev.clientY < r.top ||
+      ev.clientY > r.bottom;
+    if (outside) howDialog.close();
+  });
+
   // ---- Spacebar toggles playback (unless typing in a control) ----
   window.addEventListener('keydown', ev => {
-    if (ev.code === 'Space' && ev.target !== select) {
+    if (ev.code === 'Space' && ev.target !== select && !howDialog.open) {
       ev.preventDefault();
       clock.toggle();
       playBtn.textContent = clock.isPlaying ? '⏸' : '▶';
