@@ -1,17 +1,20 @@
 # GeoNet ShakeMap
 
 A static, self-contained web visualisation of **real GeoNet seismic waveforms
-propagating across Aotearoa New Zealand**. It plots real sensor locations on a
-black-and-white map (mainland **and the Chatham Islands**) and animates the
-ground motion recorded at each site, so you can watch the wavefront of an
-earthquake spread outward in slow motion.
+propagating across Aotearoa New Zealand**. Real sensor sites are plotted on a
+monochrome map (mainland **and the Chatham Islands**) and the ground motion
+recorded at each one is animated, so you can watch an earthquake's wavefront
+spread outward in slow motion.
 
-Rendering convention:
+Amplitudes are **response-corrected to ground acceleration (m/s²)**, so disc
+size is comparable between stations rather than reflecting each sensor's gain.
 
 | On the map | Mark |
 | --- | --- |
-| shaking at a sensor | **solid** disc, radius ∝ the magnitude of shaking |
-| epicentre | crosshair marker |
+| shaking at a sensor | **solid** disc, radius ∝ ground acceleration |
+| epicentre | ring + crosshair |
+| expanding P / S wavefront | dashed / solid ring |
+| bedrock type (optional) | translucent colour fill |
 
 (Signed polarity — ground moving up vs down — lives in the bottom timeline
 seismogram, so the map stays readable across a dense network.)
@@ -19,8 +22,8 @@ seismogram, so the map stays readable across a dense network.)
 Pick from several real historical NZ earthquakes in the header dropdown
 (Kaikōura 2016, Christchurch 2011, Darfield 2010, Dusky Sound 2009). The strip
 along the bottom is the **real seismogram of the station nearest the epicentre**
-— a single trace centred on zero, positive up / negative down — with the
-playhead and origin marked; click or drag it to scrub.
+— a single trace centred on zero, positive up / negative down, with the playhead
+and origin marked; click or drag to scrub.
 
 ![Snapshot at +150 s](docs/snapshot.svg)
 
@@ -29,121 +32,97 @@ playhead and origin marked; click or drag it to scrub.
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-```
 
-Build the static site and serve it:
-
-```bash
 npm run build        # → dist/  (type-checked, everything bundled, no CDNs)
 npm run preview      # serve dist/ locally
 ```
 
 The build is fully self-contained: the coastline is inlined into the JS bundle
-and the dataset is a plain `dist/data/event.json`. Serve `dist/` with any static
-file server.
+and the data is plain `dist/data/catalog.json` + `dist/data/events/<id>.json`.
+Serve `dist/` with any static file server.
 
 ## Controls
 
-- **Earthquake picker** (header) — switch between the events in the catalogue.
-- **Play / pause** (or the spacebar).
-- **Timeline** (bottom) — the real seismogram of the station nearest the
-  epicentre, a single line centred on zero (up = positive, down = negative);
-  **click or drag to scrub**, or focus it and use ←/→ (Shift for bigger steps),
-  Home/End.
-- **Speed** presets from real-time (`1×`) down to **`0.05×`** slow motion.
-- **Loop** toggle (on by default).
-- **Amplitude**: `envelope` (default — disc radius follows a smoothed
+- **Earthquake picker** (header) — switch events. **How it works** and
+  **Credits** buttons open info dialogs; the top-right panel describes the
+  selected quake.
+- **Play / pause** (or spacebar).
+- **Timeline** (bottom) — the nearest-station seismogram; **click or drag to
+  scrub**, or focus it and use ←/→ (Shift for bigger steps), Home/End.
+- **Speed** — real-time (`1×`) down to `0.05×` slow motion.
+- **Loop** — on by default.
+- **Amplitude** — `envelope` (default: disc radius follows a smoothed
   fast-attack/slow-decay envelope, so a dense network reads as calm swells
-  instead of strobing) or `waveform` (radius follows the raw rectified value).
-  Discs are always solid and sized by magnitude; the bottom timeline carries the
-  signed up/down seismogram.
-- **Normalise**: `per station` (default — every site shows a clear pulse as its
-  wave arrives, best for seeing propagation) or `uniform` (one global scale, so
-  near-field intensity dominates — true relative amplitude).
-- **P/S waves** — schematic wavefronts expanding from the epicentre: a dashed
-  outer P front (~6.0 km/s) and a solid inner S front (~3.5 km/s), stopping once
-  past the farthest detector. Representative crustal velocities, not a per-event
-  travel-time model.
+  instead of strobing) or `waveform` (the raw rectified value).
+- **P/S waves** (on) — schematic wavefronts from the epicentre: a dashed outer P
+  front (~6.0 km/s) and a solid inner S front (~3.5 km/s), stopping past the
+  farthest detector. Representative crustal velocities, not a travel-time model.
+- **Faults** (off) — major active faults (GEM/GNS database); hover for the fault
+  name, style and slip rate.
+- **Bedrock** (on) — a simplified geology overlay (hard basement / soft basins /
+  volcanic zones) that explains why shaking spreads unevenly.
 
 ## The data
 
-The app loads `public/data/catalog.json` (the list of events) and then one
-`public/data/events/<id>.json` per event — every dataset shares the same JSON
-shape ([`src/data/types.ts`](src/data/types.ts) → `ShakeDataset`). **Adding an
-earthquake** = drop in another `events/<id>.json` and add a `catalog.json` entry;
-both builders below do that for you.
+The app loads `public/data/catalog.json` (the event list) plus one
+`public/data/events/<id>.json` per event — all sharing one JSON shape
+([`ShakeDataset`](src/data/types.ts)). **Adding an earthquake** = drop in another
+events file and a catalog entry; both builders below do that for you.
 
-### 1. The checked-in samples (real, ship with the repo)
+The shipped datasets are **real GeoNet recordings across the dense network**
+(hundreds of strong-motion + broadband sensors), response-corrected to m/s².
 
-Four historical events — **Kaikōura 2016, Christchurch 2011, Darfield 2010,
-Dusky Sound 2009** — built from **real recorded waveforms** for the NZ backbone
-broadband stations (mirrored by [EarthScope](https://www.earthscope.org/),
-including `KHZ` right by the Kaikōura epicentre and `CTZ` on the Chatham Islands
-as a located site). They're small, work offline, and are what the app loads out
-of the box.
-
-Each event is cropped to its **shaking window** ([`data/window`](src/data/window.ts)):
-the station nearest the epicentre defines it, starting 5 s before major shaking
-begins there and ending once its significant duration (Arias 5–95% energy) is
-over. Rebuild them from the raw miniSEED with:
-
-```bash
-npm run build-sample     # data-raw/<id>_hhz.mseed → public/data/events/*.json + catalog.json
-```
-
-### 2. The full dense datasets (GeoNet AWS Open Data)
-
-For the *dense* network (hundreds of strong-motion + broadband sensors), run the
-pipeline against GeoNet's public [AWS Open Data bucket](https://registry.opendata.aws/geonet/).
-It builds the dense version of **every event** in
-[`scripts/events.ts`](scripts/events.ts) — the same catalogue the sample builder
-uses — so the sample and dense datasets stay in lockstep:
+### Full pipeline — GeoNet AWS Open Data
 
 ```bash
 npm run fetch-data       # → public/data/events/*.json (all events) + catalog.json
 ```
 
-For each event, [`scripts/fetch-data.ts`](scripts/fetch-data.ts):
+For each event in [`scripts/events.ts`](scripts/events.ts),
+[`fetch-data.ts`](scripts/fetch-data.ts):
 
 1. Reads the GeoNet station catalogue (`data-raw/delta_stations.csv`), keeps
-   stations active **on that event's date** and inside the NZ region, and
-   **thins them to one representative per grid cell** (the data-layer twin of the
-   map's on-screen decimation) so it doesn't download the entire archive.
-2. For each station, GETs that day's miniSEED straight from the public S3 bucket
-   (no credentials, plain HTTPS; the day/listing layout is
-   `.../{YEAR}/{YEAR}.{DOY}/{STA}.{NET}/{YEAR}.{DOY}.{STA}.{LOC}-{CHA}.{NET}.D`),
-   decodes it with our own Steim reader, and resamples onto the grid.
-3. Crops to a **hybrid window**: the later of the near-epicentre significant
-   duration and the time for the S-wave to reach a coverage radius (~400 km), so
-   the wavefront's spread across the network stays visible even when a near-field
-   station's own shaking is brief.
-4. Writes an `events/<id>.json` in the same shape the app already understands and
-   adds/updates its `catalog.json` entry.
+   stations active **on that event's date** and in region, and **thins them to
+   one per grid cell** so it doesn't download the whole archive.
+2. GETs each station's miniSEED for the day straight from the public S3 bucket
+   (no credentials) and decodes it with our own Steim reader.
+3. Fetches each channel's overall sensitivity from the **FDSN station service**
+   and converts counts → **ground acceleration (m/s²)** — dividing by the
+   sensitivity and differentiating velocity (broadband) channels. Stations with
+   no resolvable response are dropped rather than left in incomparable counts.
+4. Crops to a **hybrid window** — the later of the near-epicentre significant
+   duration and the S-wave reaching a coverage radius (~400 km) — and writes the
+   `events/<id>.json` + `catalog.json` entry.
 
-Downloaded day files and listings are **cached** under `data-raw/aws-cache/`
-(git-ignored), so re-running — e.g. to re-window or re-tune — costs no bandwidth.
-Delete that directory to force a fresh pull.
+Downloaded day files and metadata are **cached** under `data-raw/aws-cache/`
+(git-ignored), so re-running costs no bandwidth. Tune channels (strong-motion
+`HNZ`/`BNZ` preferred over broadband `HHZ`), region, window and thinning in the
+`CONFIG` block at the top of the script.
 
-Add or edit events in `scripts/events.ts`; tune channels (strong-motion `HNZ` is
-preferred over broadband `HHZ`), region, window, coverage radius, and thinning
-density in the `CONFIG` block at the top of the script.
+> GeoNet's AWS bucket and FDSN services live in AWS `ap-southeast-2` (Sydney), so
+> the pipeline can't run from a sandbox that can't reach that region — but it
+> runs fine from a normal machine.
 
-> **Note — why there are two datasets.** GeoNet's AWS bucket, FDSN service, and
-> data API are all hosted in AWS `ap-southeast-2` (Sydney). This repo was built
-> in a sandbox that can't reach that region, so the pipeline can't run here — but
-> it runs fine from a normal machine (e.g. anywhere in NZ). The EarthScope
-> sample is the real-data stand-in that works everywhere.
+### Lightweight offline stand-in
+
+```bash
+npm run build-sample     # data-raw/<id>_hhz.mseed → public/data/events/*.json + catalog.json
+```
+
+Builds the same JSON shape from a small set of EarthScope broadband miniSEED
+files (uncorrected velocity counts), for when the GeoNet endpoints aren't
+reachable. Covers the same events as the full pipeline.
 
 ### Regenerating the raw inputs
 
-The `data-raw/` inputs are git-ignored (reproducible). To refetch:
+`data-raw/` is git-ignored. To refetch:
 
 ```bash
 mkdir -p data-raw
 # GeoNet station catalogue (mainland + Chathams)
 curl -sSL https://raw.githubusercontent.com/GeoNet/delta/main/network/stations.csv \
   -o data-raw/delta_stations.csv
-# Natural Earth coastline (mainland + Chathams), then simplify + bundle it
+# Natural Earth coastline, then simplify + bundle it
 curl -sSL https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_land.geojson \
   -o data-raw/ne_50m_land.geojson
 npm run build-coastline   # → src/geo/nz-coastline.json
@@ -151,65 +130,66 @@ npm run build-coastline   # → src/geo/nz-coastline.json
 S="BFZ,BKZ,CTZ,HIZ,KHZ,ODZ,OUZ,QRZ,RPZ,URZ,WPVZ"
 curl -sSL "https://service.earthscope.org/fdsnws/dataselect/1/query?net=NZ&sta=$S&cha=HHZ&start=2016-11-13T11:02:00&end=2016-11-13T11:10:00" \
   -o data-raw/kaikoura_hhz.mseed
-# (and christchurch-2011, darfield-2010, dusky-sound-2009 — see the windows in scripts/build-sample.ts)
 npm run build-sample      # → public/data/events/*.json + catalog.json
 ```
 
 ## Testing
 
 ```bash
-npm test                 # vitest, 110 tests
+npm test                 # vitest, 125 tests
 npm run coverage
 ```
 
-Per the brief, tests **concentrate on the data-transformation algorithms** — the
-parts that can actually be wrong — rather than the DOM/canvas glue:
+Tests **concentrate on the data-transformation algorithms** — the parts that can
+actually be wrong — rather than the DOM/canvas glue:
 
 | Module | What's tested |
 | --- | --- |
-| [`geo/projection`](src/geo/projection.ts) | lon-wrapping (Chatham east of the mainland), bounds, fit-to-canvas, north-up, aspect |
-| [`geo/simplify`](src/geo/simplify.ts) | Douglas–Peucker perpendicular distance & polyline reduction |
-| [`data/miniseed`](src/data/miniseed.ts) | miniSEED framing, BTIME, sample-rate, **Steim-1/2 decoding** (synthetic INT32 record + a real Kaikōura Steim-2 record with its built-in integrity check) |
-| [`data/decimate`](src/data/decimate.ts) | grid decimation → representative-per-cell, priority & determinism |
-| [`data/amplitude`](src/data/amplitude.ts) | trace interpolation, robust normalisation scale, amplitude → radius/fill |
+| [`geo/projection`](src/geo/projection.ts) | lon-wrapping (Chatham east of the mainland), bounds, fit-to-canvas, aspect |
+| [`geo/simplify`](src/geo/simplify.ts) | Douglas–Peucker distance & polyline reduction |
+| [`geo/distance`](src/geo/distance.ts) | haversine, nearest-station, wavefront rings (antimeridian-safe) |
+| [`data/miniseed`](src/data/miniseed.ts) | miniSEED framing, BTIME, sample-rate, **Steim-1/2 decoding** |
+| [`data/response`](src/data/response.ts) | FDSN sensitivity parsing, counts → m/s² correction |
+| [`data/decimate`](src/data/decimate.ts) | grid decimation, priority & determinism |
+| [`data/amplitude`](src/data/amplitude.ts) | interpolation, robust scale, amplitude → radius/fill |
 | [`data/resample`](src/data/resample.ts) | anti-aliased box resample + DC-baseline removal |
-| [`data/window`](src/data/window.ts) | significant-duration (Arias 5–95%) shaking-window detection |
-| [`data/envelope`](src/data/envelope.ts) | fast-attack/slow-decay shaking-envelope follower (drives circle radius) |
-| [`geo/distance`](src/geo/distance.ts) | haversine distance, nearest-station selection, destination-point + wavefront rings (antimeridian-safe) |
-| [`data/waveform`](src/data/waveform.ts) | signed peak-preserving decimation for the seismogram timeline |
+| [`data/window`](src/data/window.ts) | significant-duration (Arias 5–95%) window detection |
+| [`data/envelope`](src/data/envelope.ts) | fast-attack/slow-decay shaking-envelope follower |
+| [`data/waveform`](src/data/waveform.ts) | signed peak-preserving decimation for the timeline |
 | [`playback/clock`](src/playback/clock.ts) | speed scaling, looping/wrap, clamp-and-stop, seek |
 
-Lint/format with Google's style ([gts](https://github.com/google/gts)):
-
-```bash
-npm run lint
-npm run fix
-```
+Lint/format with [gts](https://github.com/google/gts): `npm run lint`, `npm run fix`.
 
 ## Project layout
 
 ```
 src/
-  geo/        projection (incl. Chatham), distance/nearest, coastline simplify, nz-coastline.json
-  data/       types, miniSEED/Steim decoder, decimation, amplitude, resample, waveform
+  geo/        projection (incl. Chatham), distance/nearest, simplify, geology + coastline data
+  data/       types, miniSEED/Steim decoder, response correction, decimate, amplitude, resample, waveform
   playback/   playback clock (slow-mo + loop)
-  render/     black-and-white map renderer + bottom trace-strip renderer
+  render/     monochrome map renderer + bottom trace-strip renderer
   main.ts     glue: catalogue → load event → project → decimate → animate → controls
 scripts/
   build-coastline.ts   Natural Earth land → bundled NZ coastline
-  build-sample.ts      raw miniSEED → checked-in sample event.json
-  fetch-data.ts        GeoNet AWS Open Data → full dense event.json
+  build-faults.ts      GEM active faults → bundled fault traces
+  build-sample.ts      raw miniSEED → offline sample datasets
+  fetch-data.ts        GeoNet AWS + FDSN → full dense datasets (response-corrected)
   render-snapshot.ts   static SVG preview at a chosen time
 ```
 
 ## Tech
 
-Vite + TypeScript, gts (Google TypeScript style), Vitest. **Zero runtime
-dependencies** — the projection, miniSEED/Steim decoder, decimation and renderer
-are all first-party and bundled; nothing is fetched from a CDN.
+Vite + TypeScript, gts, Vitest. **Zero runtime dependencies** — the projection,
+miniSEED/Steim decoder, response correction, decimation and renderer are all
+first-party and bundled; nothing is fetched from a CDN.
 
 ## Data attribution
 
-Waveforms and station metadata: **GeoNet** (GNS Science / Toka Tū Ake EQC),
-CC BY 3.0 NZ, via the GeoNet AWS Open Data Registry and the EarthScope FDSN
-mirror. Coastline: **Natural Earth** (public domain).
+- **Waveforms & station metadata:** GeoNet (GNS Science / Toka Tū Ake), CC BY
+  3.0 NZ, via the GeoNet AWS Open Data Registry, FDSN station service, and the
+  EarthScope FDSN mirror.
+- **Active faults:** GEM Global Active Faults Database (GNS-derived), CC BY-SA 4.0.
+- **Coastline:** Natural Earth (public domain).
+
+An educational visualisation, not an official hazard product; not affiliated
+with or endorsed by GeoNet or GNS Science.
