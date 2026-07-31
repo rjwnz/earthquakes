@@ -13,8 +13,13 @@ import {
   createProjector,
   type LngLat,
 } from '../src/geo/projection';
-import {sampleTraceAt, amplitudeToCircle} from '../src/data/amplitude';
-import {networkEnvelope, peakBins} from '../src/data/envelope';
+import {
+  sampleTraceAt,
+  amplitudeToCircle,
+  robustMaxAbs,
+} from '../src/data/amplitude';
+import {signedPeakBins} from '../src/data/waveform';
+import {nearestTo} from '../src/geo/distance';
 import type {Coastline, ShakeDataset} from '../src/data/types';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -47,7 +52,7 @@ const projector = createProjector(padBounds(computeBounds(extent), 0.04), {
 
 const currentMs = dataset.event.originTimeMs + secondsAfterOrigin * 1000;
 const durationMs = dataset.endMs - dataset.startMs;
-const style = {minRadius: 1.6, maxRadius: 24, gamma: 0.6};
+const style = {minRadius: 1.6, maxRadius: 22, rangeDecades: 3};
 
 const paths = coastline.rings
   .map(ring => {
@@ -88,27 +93,34 @@ const epicentre =
   `<line x1="${(epi.x - 11).toFixed(1)}" y1="${epi.y.toFixed(1)}" x2="${(epi.x + 11).toFixed(1)}" y2="${epi.y.toFixed(1)}"/>` +
   `<line x1="${epi.x.toFixed(1)}" y1="${(epi.y - 11).toFixed(1)}" x2="${epi.x.toFixed(1)}" y2="${(epi.y + 11).toFixed(1)}"/></g>`;
 
-// ---- Bottom trace strip: network shaking envelope + playhead ----
-const sampleCount = Math.round((durationMs / 1000) * dataset.sampleRateHz);
-const envelope = networkEnvelope(dataset.sensors, sampleCount);
+// ---- Bottom timeline: nearest-station seismogram, centred on zero ----
+const recording = dataset.sensors.filter(s => s.hasData);
+const nearest = nearestTo(recording, dataset.event);
 const cols = W;
-const bins = peakBins(envelope, cols);
-const stripTop = MAP_H + 8;
-const stripH = TRACE_H - 16;
-const baseY = stripTop + stripH;
-let envPath = `M0 ${baseY.toFixed(1)}`;
-for (let x = 0; x < cols; x++)
-  envPath += ` L${x} ${(baseY - bins[x] * stripH).toFixed(1)}`;
-envPath += ` L${cols - 1} ${baseY.toFixed(1)} Z`;
+const bins = nearest ? signedPeakBins(nearest.samples, cols) : [];
+const traceScale = nearest ? Math.max(1, robustMaxAbs(nearest.samples, 1)) : 1;
+const stripTop = MAP_H + 12;
+const stripH = TRACE_H - 20;
+const midY = stripTop + stripH / 2;
+const half = stripH / 2;
+let wavePath = '';
+for (let x = 0; x < bins.length; x++) {
+  const v = Math.max(-1, Math.min(1, bins[x] / traceScale));
+  wavePath += `${x === 0 ? 'M' : 'L'}${x} ${(midY - v * half).toFixed(1)} `;
+}
 const posFrac = (currentMs - dataset.startMs) / durationMs;
 const originFrac = (dataset.event.originTimeMs - dataset.startMs) / durationMs;
 const playX = (posFrac * W).toFixed(1);
 const originX = (originFrac * W).toFixed(1);
+const label = nearest
+  ? `${nearest.code} · nearest station — vertical ground motion`
+  : 'no recording station';
 const strip =
-  `<path d="${envPath}" fill="rgba(255,255,255,0.42)"/>` +
-  `<line x1="${originX}" y1="${stripTop}" x2="${originX}" y2="${baseY}" stroke="rgba(255,255,255,0.45)" stroke-width="1" stroke-dasharray="3 3"/>` +
-  `<line x1="${playX}" y1="${(stripTop - 6).toFixed(1)}" x2="${playX}" y2="${baseY}" stroke="#fff" stroke-width="1.5"/>` +
-  `<text x="20" y="${(stripTop - 10).toFixed(0)}" fill="#9a9aa2" font-family="sans-serif" font-size="11">network shaking over time · click/drag to scrub</text>`;
+  `<line x1="0" y1="${midY.toFixed(1)}" x2="${W}" y2="${midY.toFixed(1)}" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>` +
+  `<path d="${wavePath}" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1"/>` +
+  `<line x1="${originX}" y1="${stripTop}" x2="${originX}" y2="${(stripTop + stripH).toFixed(1)}" stroke="rgba(255,255,255,0.45)" stroke-width="1" stroke-dasharray="3 3"/>` +
+  `<line x1="${playX}" y1="${(stripTop - 6).toFixed(1)}" x2="${playX}" y2="${(stripTop + stripH).toFixed(1)}" stroke="#fff" stroke-width="1.5"/>` +
+  `<text x="20" y="${(stripTop - 8).toFixed(0)}" fill="#9a9aa2" font-family="sans-serif" font-size="11">${label} · click/drag to scrub</text>`;
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 <rect width="${W}" height="${H}" fill="#000"/>

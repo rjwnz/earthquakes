@@ -16,8 +16,9 @@ Rendering convention:
 
 Pick from several real historical NZ earthquakes in the header dropdown
 (Kaikōura 2016, Christchurch 2011, Darfield 2010, Dusky Sound 2009). The strip
-along the bottom is the **network-wide shaking over time** — click or drag it to
-scrub, with the playhead and origin marked.
+along the bottom is the **real seismogram of the station nearest the epicentre**
+— a single trace centred on zero, positive up / negative down — with the
+playhead and origin marked; click or drag it to scrub.
 
 ![Snapshot at +150 s](docs/snapshot.svg)
 
@@ -43,8 +44,10 @@ file server.
 
 - **Earthquake picker** (header) — switch between the events in the catalogue.
 - **Play / pause** (or the spacebar).
-- **Trace strip** (bottom) — the network shaking envelope over time; **click or
-  drag to scrub**, or focus it and use ←/→ (Shift for bigger steps), Home/End.
+- **Timeline** (bottom) — the real seismogram of the station nearest the
+  epicentre, a single line centred on zero (up = positive, down = negative);
+  **click or drag to scrub**, or focus it and use ←/→ (Shift for bigger steps),
+  Home/End.
 - **Speed** presets from real-time (`1×`) down to **`0.05×`** slow motion.
 - **Loop** toggle (on by default).
 - **Normalise**: `per station` (default — every site shows a clear pulse as its
@@ -127,7 +130,7 @@ npm run build-sample      # → public/data/events/*.json + catalog.json
 ## Testing
 
 ```bash
-npm test                 # vitest, 82 tests
+npm test                 # vitest, 89 tests
 npm run coverage
 ```
 
@@ -142,7 +145,8 @@ parts that can actually be wrong — rather than the DOM/canvas glue:
 | [`data/decimate`](src/data/decimate.ts) | grid decimation → representative-per-cell, priority & determinism |
 | [`data/amplitude`](src/data/amplitude.ts) | trace interpolation, robust normalisation scale, amplitude → radius/fill |
 | [`data/resample`](src/data/resample.ts) | anti-aliased box resample + DC-baseline removal |
-| [`data/envelope`](src/data/envelope.ts) | network shaking envelope (per-station-normalised mean) + peak-binning for the trace strip |
+| [`geo/distance`](src/geo/distance.ts) | haversine distance + nearest-station selection (antimeridian-safe) |
+| [`data/waveform`](src/data/waveform.ts) | signed peak-preserving decimation for the seismogram timeline |
 | [`playback/clock`](src/playback/clock.ts) | speed scaling, looping/wrap, clamp-and-stop, seek |
 
 Lint/format with Google's style ([gts](https://github.com/google/gts)):
@@ -156,8 +160,8 @@ npm run fix
 
 ```
 src/
-  geo/        projection (incl. Chatham), coastline simplify, bundled nz-coastline.json
-  data/       types, miniSEED/Steim decoder, decimation, amplitude, resample, envelope
+  geo/        projection (incl. Chatham), distance/nearest, coastline simplify, nz-coastline.json
+  data/       types, miniSEED/Steim decoder, decimation, amplitude, resample, waveform
   playback/   playback clock (slow-mo + loop)
   render/     black-and-white map renderer + bottom trace-strip renderer
   main.ts     glue: catalogue → load event → project → decimate → animate → controls

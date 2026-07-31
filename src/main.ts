@@ -3,12 +3,12 @@
  * lay out the map + bottom trace scrubber, and drive the animation and controls.
  *
  * All the interesting maths lives in the unit-tested modules
- * (`geo/projection`, `data/decimate`, `data/amplitude`, `data/envelope`,
- * `playback/clock`, `render/*`); this file is the glue.
+ * (`geo/projection`, `geo/distance`, `data/decimate`, `data/amplitude`,
+ * `data/waveform`, `playback/clock`, `render/*`); this file is the glue.
  */
 import './style.css';
 import coastlineJson from './geo/nz-coastline.json';
-import type {Catalog, Coastline, ShakeDataset} from './data/types';
+import type {Catalog, Coastline, SensorTrace, ShakeDataset} from './data/types';
 import {
   computeBounds,
   padBounds,
@@ -16,8 +16,9 @@ import {
   type LngLat,
   type Projector,
 } from './geo/projection';
+import {haversineKm, nearestTo} from './geo/distance';
 import {decimateByGrid, type Placed} from './data/decimate';
-import {networkEnvelope} from './data/envelope';
+import {robustMaxAbs} from './data/amplitude';
 import {
   renderFrame,
   DEFAULT_STYLE,
@@ -75,7 +76,9 @@ async function bootstrap(): Promise<void> {
     sensors: [],
     epicenter: null,
   };
-  let envelope: number[] = [];
+  // Seismogram of the station nearest the epicentre, shown in the timeline.
+  let traceSamples: readonly number[] = [];
+  let traceScale = 1;
   let normalisation: Normalisation = 'per-station';
 
   const clock = new PlaybackClock(1);
@@ -141,7 +144,8 @@ async function bootstrap(): Promise<void> {
     const originFrac =
       (dataset.event.originTimeMs - dataset.startMs) / durationMs();
     renderTraceStrip(traceCtx, rect.width, rect.height, {
-      envelope,
+      samples: traceSamples,
+      scale: traceScale,
       positionFrac: clock.positionMs / durationMs(),
       originFrac,
     });
@@ -216,10 +220,20 @@ async function bootstrap(): Promise<void> {
       ...dataset.sensors.map(s => ({lat: s.lat, lon: s.lon})),
     ];
     bounds = padBounds(computeBounds(extent), 0.04);
-    const sampleCount = Math.round(
-      (durationMs() / 1000) * dataset.sampleRateHz
-    );
-    envelope = networkEnvelope(dataset.sensors, sampleCount);
+
+    // Timeline shows the seismogram of the station nearest the epicentre.
+    const recording = dataset.sensors.filter(s => s.hasData);
+    const nearest: SensorTrace | null = nearestTo(recording, dataset.event);
+    traceSamples = nearest ? nearest.samples : [];
+    traceScale = nearest ? Math.max(1, robustMaxAbs(nearest.samples, 1)) : 1;
+    const captionEl = document.getElementById('trace-caption');
+    if (captionEl) {
+      captionEl.textContent = nearest
+        ? `${nearest.code} · nearest station, ${Math.round(
+            haversineKm(nearest, dataset.event)
+          )} km from epicentre — vertical ground motion · click/drag to scrub`
+        : 'No recording station · click/drag to scrub';
+    }
 
     clock.setDuration(durationMs());
     traceCanvas.setAttribute('aria-valuemax', String(Math.round(durationMs())));
