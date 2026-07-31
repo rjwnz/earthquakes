@@ -18,7 +18,8 @@
     "fix": "gts fix",
     "fetch-data": "tsx scripts/fetch-data.ts",
     "build-coastline": "tsx scripts/build-coastline.ts",
-    "build-sample": "tsx scripts/build-sample.ts"
+    "build-sample": "tsx scripts/build-sample.ts",
+    "build-faults": "tsx scripts/build-faults.ts"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.14",
