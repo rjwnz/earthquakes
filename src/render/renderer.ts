@@ -1,10 +1,9 @@
 /**
  * Black-and-white canvas renderer.
  *
- * Draws the NZ coastline and, for each displayed sensor, a circle whose radius
- * tracks the magnitude of the ground motion at the current playback time:
- *   - positive amplitude → a solid (filled) white disc,
- *   - negative amplitude → a hollow white ring.
+ * Draws the NZ coastline and, for each displayed sensor, a solid white disc
+ * whose radius tracks the magnitude of shaking at the current playback time
+ * (signed polarity lives in the bottom timeline, not the map).
  *
  * Coastline rings and sensor positions arrive already projected to screen
  * pixels (see `main.ts`); only the amplitude-driven parts change per frame, so
@@ -38,8 +37,7 @@ export interface RenderSensor {
 /**
  * How a sensor's circle radius is driven:
  *  - `envelope`: smoothed magnitude (calm; no strobing) — the default,
- *  - `instantaneous`: the raw signed value (the literal waveform).
- * The fill (solid/hollow) always follows the instantaneous sign.
+ *  - `instantaneous`: the raw rectified value (the literal waveform magnitude).
  */
 export type AmplitudeMode = 'envelope' | 'instantaneous';
 
@@ -63,7 +61,6 @@ export interface RenderStyle {
    */
   perStationFloor: number;
   coastlineWidth: number;
-  ringWidth: number;
 }
 
 export const DEFAULT_STYLE: RenderStyle = {
@@ -79,7 +76,6 @@ export const DEFAULT_STYLE: RenderStyle = {
   rangeDecades: 3,
   perStationFloor: 0.05,
   coastlineWidth: 1,
-  ringWidth: 1.6,
 };
 
 /** Expanding P and S wavefronts, as projected closed rings (null = not shown). */
@@ -214,15 +210,8 @@ export function renderFrame(
       continue;
     }
 
-    const raw = sampleTraceAt(
-      s.samples,
-      frame.startMs,
-      frame.sampleRateHz,
-      frame.currentTimeMs
-    );
-    // Radius follows the smoothed envelope (calm) or the raw value; either way
-    // the fill follows the instantaneous sign. Encoding magnitude and sign into
-    // one "signed magnitude" lets amplitudeToCircle handle both.
+    // Circle size shows the *magnitude* of shaking — a solid disc either way.
+    // Radius follows the smoothed envelope (calm) or the raw rectified value.
     const magnitude =
       frame.amplitudeMode === 'envelope'
         ? sampleTraceAt(
@@ -231,22 +220,23 @@ export function renderFrame(
             frame.sampleRateHz,
             frame.currentTimeMs
           )
-        : Math.abs(raw);
-    const signed = raw >= 0 ? magnitude : -magnitude;
+        : Math.abs(
+            sampleTraceAt(
+              s.samples,
+              frame.startMs,
+              frame.sampleRateHz,
+              frame.currentTimeMs
+            )
+          );
     const scale =
       frame.normalisation === 'per-station'
         ? perStationScale(s.scale, frame.globalScale, style.perStationFloor)
         : frame.globalScale;
-    const {radius, filled} = amplitudeToCircle(signed, {...circleOpts, scale});
+    const {radius} = amplitudeToCircle(magnitude, {...circleOpts, scale});
 
     ctx.beginPath();
     ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
-    if (filled) {
-      ctx.fill();
-    } else {
-      ctx.lineWidth = style.ringWidth;
-      ctx.stroke();
-    }
+    ctx.fill();
   }
 
   if (scene.epicenter) drawEpicentre(ctx, scene.epicenter, style);

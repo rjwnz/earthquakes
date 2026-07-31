@@ -106,11 +106,12 @@ const circles = dataset.sensors
       dataset.sampleRateHz,
       currentMs
     );
-    const {radius, filled} = amplitudeToCircle(amp, {...style, scale: s.scale});
-    const attrs = filled
-      ? 'fill="#fff"'
-      : 'fill="none" stroke="#fff" stroke-width="1.6"';
-    return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${radius.toFixed(1)}" ${attrs}/>`;
+    // Solid disc sized by magnitude (matches the app's default view).
+    const {radius} = amplitudeToCircle(Math.abs(amp), {
+      ...style,
+      scale: s.scale,
+    });
+    return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${radius.toFixed(1)}" fill="#fff"/>`;
   })
   .join('\n');
 

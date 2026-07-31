@@ -8,11 +8,13 @@ earthquake spread outward in slow motion.
 
 Rendering convention:
 
-| Ground motion at a sensor | Circle |
+| On the map | Mark |
 | --- | --- |
-| moving **up** (positive amplitude) | **solid** disc, radius ∝ shaking |
-| moving **down** (negative amplitude) | **hollow** ring, radius ∝ shaking |
+| shaking at a sensor | **solid** disc, radius ∝ the magnitude of shaking |
 | epicentre | crosshair marker |
+
+(Signed polarity — ground moving up vs down — lives in the bottom timeline
+seismogram, so the map stays readable across a dense network.)
 
 Pick from several real historical NZ earthquakes in the header dropdown
 (Kaikōura 2016, Christchurch 2011, Darfield 2010, Dusky Sound 2009). The strip
@@ -50,11 +52,11 @@ file server.
   Home/End.
 - **Speed** presets from real-time (`1×`) down to **`0.05×`** slow motion.
 - **Loop** toggle (on by default).
-- **Amplitude**: `envelope` (default — circle radius follows a smoothed
+- **Amplitude**: `envelope` (default — disc radius follows a smoothed
   fast-attack/slow-decay envelope, so a dense network reads as calm swells
-  instead of strobing) or `waveform` (radius follows the raw instantaneous
-  value). The fill (solid up / hollow down) always follows the instantaneous
-  sign; the bottom timeline stays a signed seismogram.
+  instead of strobing) or `waveform` (radius follows the raw rectified value).
+  Discs are always solid and sized by magnitude; the bottom timeline carries the
+  signed up/down seismogram.
 - **Normalise**: `per station` (default — every site shows a clear pulse as its
   wave arrives, best for seeing propagation) or `uniform` (one global scale, so
   near-field intensity dominates — true relative amplitude).
