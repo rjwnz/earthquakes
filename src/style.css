@@ -118,6 +118,61 @@ body {
   margin-top: 0.1rem;
 }
 
+/* Hover tooltip over a sensor location */
+#sensor-tip {
+  position: absolute;
+  z-index: 5;
+  width: 214px;
+  padding: 0.5rem 0.6rem 0.55rem;
+  background: rgba(10, 10, 12, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+
+#sensor-tip[hidden] {
+  display: none;
+}
+
+#sensor-tip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+}
+
+#sensor-tip-code {
+  font-weight: 650;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+}
+
+#sensor-tip-name {
+  font-size: 0.74rem;
+  color: var(--ink-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#sensor-tip-trace {
+  display: block;
+  width: 202px;
+  height: 46px;
+  background: #060608;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+#sensor-tip-meta {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 #legend {
   position: absolute;
   bottom: 0.9rem;

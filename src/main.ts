@@ -96,6 +96,24 @@ async function bootstrap(): Promise<void> {
   const timeUtc = el('time-utc');
   const playBtn = el<HTMLButtonElement>('play');
 
+  // ---- Sensor hover tooltip (location + shortened seismogram) ----
+  const tip = el('sensor-tip');
+  const tipCode = el('sensor-tip-code');
+  const tipName = el('sensor-tip-name');
+  const tipMeta = el('sensor-tip-meta');
+  const tipCanvas = el<HTMLCanvasElement>('sensor-tip-trace');
+  const tipCtx = setupContext(tipCanvas);
+  const TIP_TRACE_W = 202;
+  const TIP_TRACE_H = 46;
+  const SENSOR_HIT_PX = 14;
+  {
+    const dpr = window.devicePixelRatio || 1;
+    tipCanvas.width = Math.round(TIP_TRACE_W * dpr);
+    tipCanvas.height = Math.round(TIP_TRACE_H * dpr);
+    tipCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  let hoveredSensor: RenderSensor | null = null;
+
   // ---- Per-event state, replaced on every loadEvent() ----
   let dataset: ShakeDataset | null = null;
   let bounds = {minLon: 0, maxLon: 1, minLat: 0, maxLat: 1};
@@ -147,6 +165,9 @@ async function bootstrap(): Promise<void> {
       const s = dataset!.sensors[c.representative.index];
       return {
         code: s.code,
+        name: s.name,
+        lat: s.lat,
+        lon: s.lon,
         x: c.representative.x,
         y: c.representative.y,
         hasData: s.hasData,
@@ -206,6 +227,19 @@ async function bootstrap(): Promise<void> {
     });
   };
 
+  // Redraw the hovered sensor's mini-seismogram (playhead tracks the clock).
+  const drawTip = (): void => {
+    if (!hoveredSensor || !dataset) return;
+    const originFrac =
+      (dataset.event.originTimeMs - dataset.startMs) / durationMs();
+    renderTraceStrip(tipCtx, TIP_TRACE_W, TIP_TRACE_H, {
+      samples: hoveredSensor.samples,
+      scale: Math.max(1, hoveredSensor.scale),
+      positionFrac: clock.positionMs / durationMs(),
+      originFrac,
+    });
+  };
+
   const sizeCanvas = (
     canvas: HTMLCanvasElement,
     ctx: CanvasRenderingContext2D
@@ -226,6 +260,7 @@ async function bootstrap(): Promise<void> {
       padding: MAP_PADDING_PX,
     });
     scene = buildScene(projector, w, h);
+    hideTip();
     drawMap();
   };
 
@@ -255,6 +290,7 @@ async function bootstrap(): Promise<void> {
     updateReadout();
     drawMap();
     drawTrace();
+    drawTip();
     if (!playing) playBtn.textContent = '▶';
   });
 
@@ -336,6 +372,7 @@ async function bootstrap(): Promise<void> {
     updateReadout();
     drawMap();
     drawTrace();
+    drawTip();
   };
   let scrubbing = false;
   traceCanvas.addEventListener('pointerdown', ev => {
@@ -360,7 +397,80 @@ async function bootstrap(): Promise<void> {
       updateReadout();
       drawMap();
       drawTrace();
+      drawTip();
     }
+  });
+
+  // ---- Sensor hover: show location + shortened trace over the map ----
+  const findSensorAt = (cssX: number, cssY: number): RenderSensor | null => {
+    let best: RenderSensor | null = null;
+    let bestDist = SENSOR_HIT_PX * SENSOR_HIT_PX;
+    for (const s of scene.sensors) {
+      const dx = s.x - cssX;
+      const dy = s.y - cssY;
+      const d = dx * dx + dy * dy;
+      if (d <= bestDist) {
+        bestDist = d;
+        best = s;
+      }
+    }
+    return best;
+  };
+
+  const positionTip = (s: RenderSensor): void => {
+    const off = 16;
+    const w = tip.offsetWidth;
+    const h = tip.offsetHeight;
+    let left = s.x + off;
+    let top = s.y - h - off;
+    if (left + w > scene.width - 4) left = s.x - w - off;
+    if (left < 4) left = 4;
+    if (top < 4) top = s.y + off;
+    if (top + h > scene.height - 4) top = scene.height - h - 4;
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+  };
+
+  const showTip = (s: RenderSensor): void => {
+    hoveredSensor = s;
+    tipCode.textContent = s.code;
+    tipName.textContent = s.name;
+    const parts: string[] = [];
+    if (dataset) {
+      parts.push(
+        `${Math.round(haversineKm(s, dataset.event))} km from epicentre`
+      );
+    }
+    if (!s.hasData) parts.push('no waveform');
+    if (s.count > 1) parts.push(`+${s.count - 1} nearby`);
+    tipMeta.textContent = parts.join(' · ');
+    tip.hidden = false;
+    positionTip(s);
+    drawTip();
+  };
+
+  const hideTip = (): void => {
+    if (!hoveredSensor) return;
+    hoveredSensor = null;
+    tip.hidden = true;
+  };
+
+  mapCanvas.addEventListener('pointermove', ev => {
+    if (ev.pointerType === 'touch') return;
+    const rect = mapCanvas.getBoundingClientRect();
+    const found = findSensorAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    if (found) {
+      if (found !== hoveredSensor) showTip(found);
+      else positionTip(found);
+      mapCanvas.style.cursor = 'pointer';
+    } else {
+      hideTip();
+      mapCanvas.style.cursor = 'default';
+    }
+  });
+  mapCanvas.addEventListener('pointerleave', () => {
+    hideTip();
+    mapCanvas.style.cursor = 'default';
   });
 
   // ---- Speed presets ----

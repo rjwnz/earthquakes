@@ -22,6 +22,11 @@ export interface ScreenPoint {
 
 export interface RenderSensor {
   code: string;
+  /** Human-readable site name (for the hover tooltip). */
+  name: string;
+  /** Site latitude/longitude (for the tooltip's distance readout). */
+  lat: number;
+  lon: number;
   x: number;
   y: number;
   hasData: boolean;
