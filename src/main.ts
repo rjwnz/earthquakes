@@ -16,7 +16,7 @@ import {
   type LngLat,
   type Projector,
 } from './geo/projection';
-import {haversineKm, nearestTo} from './geo/distance';
+import {haversineKm, nearestTo, wavefrontRing} from './geo/distance';
 import {decimateByGrid, type Placed} from './data/decimate';
 import {robustMaxAbs} from './data/amplitude';
 import {
@@ -25,6 +25,7 @@ import {
   type RenderSensor,
   type Scene,
   type Normalisation,
+  type Wavefronts,
 } from './render/renderer';
 import {renderTraceStrip} from './render/traceStrip';
 import {PlaybackClock, SPEED_PRESETS} from './playback/clock';
@@ -34,6 +35,12 @@ const INITIAL_SPEED = 0.1;
 const DECIMATION_CELL_PX = 26;
 const MAP_PADDING_PX = 30;
 const DATA_BASE = `${import.meta.env.BASE_URL}data/`;
+
+// Seismic-wave velocities for the schematic P/S wavefronts (km/s). Representative
+// crustal values; the fronts stop expanding once past the farthest detector.
+const VP_KMS = 6.0;
+const VS_KMS = 3.5;
+const WAVE_MARGIN_KM = 60;
 
 function el<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -80,6 +87,11 @@ async function bootstrap(): Promise<void> {
   let traceSamples: readonly number[] = [];
   let traceScale = 1;
   let normalisation: Normalisation = 'per-station';
+  // Current projector (kept so wavefronts can be projected each frame).
+  let projector: Projector | null = null;
+  let showWaves = true;
+  // Distance to the farthest recording sensor; the fronts stop just beyond it.
+  let maxSensorKm = 0;
 
   const clock = new PlaybackClock(1);
   clock.setSpeed(INITIAL_SPEED);
@@ -127,14 +139,29 @@ async function bootstrap(): Promise<void> {
     return {width, height, coastline: projectedCoast, sensors, epicenter: epi};
   };
 
+  const computeWavefronts = (elapsedSec: number): Wavefronts | null => {
+    if (!dataset || !projector || !showWaves || elapsedSec <= 0) return null;
+    const epi = {lat: dataset.event.lat, lon: dataset.event.lon};
+    const cutoff = maxSensorKm + WAVE_MARGIN_KM;
+    const proj = projector;
+    const front = (km: number) =>
+      km > 0 && km <= cutoff
+        ? wavefrontRing(epi, km).map(p => proj.project(p))
+        : null;
+    return {p: front(VP_KMS * elapsedSec), s: front(VS_KMS * elapsedSec)};
+  };
+
   const drawMap = (): void => {
     if (!dataset) return;
+    const currentTimeMs = dataset.startMs + clock.positionMs;
+    const elapsedSec = (currentTimeMs - dataset.event.originTimeMs) / 1000;
     renderFrame(mapCtx, scene, DEFAULT_STYLE, {
       startMs: dataset.startMs,
       sampleRateHz: dataset.sampleRateHz,
       globalScale: dataset.amplitudeScale,
       normalisation,
-      currentTimeMs: dataset.startMs + clock.positionMs,
+      currentTimeMs,
+      wavefronts: computeWavefronts(elapsedSec),
     });
   };
 
@@ -165,7 +192,7 @@ async function bootstrap(): Promise<void> {
 
   const layoutMap = (): void => {
     const {w, h} = sizeCanvas(mapCanvas, mapCtx);
-    const projector = createProjector(bounds, {
+    projector = createProjector(bounds, {
       width: w,
       height: h,
       padding: MAP_PADDING_PX,
@@ -226,6 +253,10 @@ async function bootstrap(): Promise<void> {
     const nearest: SensorTrace | null = nearestTo(recording, dataset.event);
     traceSamples = nearest ? nearest.samples : [];
     traceScale = nearest ? Math.max(1, robustMaxAbs(nearest.samples, 1)) : 1;
+    maxSensorKm = recording.reduce(
+      (m, s) => Math.max(m, haversineKm(s, dataset!.event)),
+      0
+    );
     const captionEl = document.getElementById('trace-caption');
     if (captionEl) {
       captionEl.textContent = nearest
@@ -318,6 +349,10 @@ async function bootstrap(): Promise<void> {
   });
   el<HTMLSelectElement>('norm-toggle').addEventListener('change', ev => {
     normalisation = (ev.target as HTMLSelectElement).value as Normalisation;
+    drawMap();
+  });
+  el<HTMLInputElement>('waves-toggle').addEventListener('change', ev => {
+    showWaves = (ev.target as HTMLInputElement).checked;
     drawMap();
   });
 

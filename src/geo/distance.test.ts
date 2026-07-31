@@ -1,5 +1,11 @@
 import {describe, it, expect} from 'vitest';
-import {haversineKm, nearestTo, type LatLon} from './distance';
+import {
+  haversineKm,
+  nearestTo,
+  destinationPoint,
+  wavefrontRing,
+  type LatLon,
+} from './distance';
 
 describe('haversineKm', () => {
   it('is zero for identical points', () => {
@@ -45,5 +51,41 @@ describe('nearestTo', () => {
 
   it('does not pick the far Chatham station for a mainland target', () => {
     expect(nearestTo(stations, kaikoura)?.code).not.toBe('CTZ');
+  });
+});
+
+describe('destinationPoint', () => {
+  it('returns the origin for zero distance', () => {
+    const p = destinationPoint({lat: -41, lon: 174}, 0, 57);
+    expect(p.lat).toBeCloseTo(-41, 6);
+    expect(p.lon).toBeCloseTo(174, 6);
+  });
+
+  it('moves ~1° north per 111 km on a due-north bearing', () => {
+    const p = destinationPoint({lat: 0, lon: 0}, 111.19, 0);
+    expect(p.lat).toBeCloseTo(1, 2);
+    expect(p.lon).toBeCloseTo(0, 6);
+  });
+
+  it('lands exactly `distanceKm` away (round-trips through haversine)', () => {
+    const origin = {lat: -42.737, lon: 173.054};
+    for (const bearing of [0, 45, 90, 200, 315]) {
+      const p = destinationPoint(origin, 250, bearing);
+      expect(haversineKm(origin, p)).toBeCloseTo(250, 3);
+    }
+  });
+});
+
+describe('wavefrontRing', () => {
+  const origin = {lat: -42.737, lon: 173.054};
+
+  it('returns the requested number of points', () => {
+    expect(wavefrontRing(origin, 100, 64)).toHaveLength(64);
+  });
+
+  it('places every point at the given radius', () => {
+    for (const p of wavefrontRing(origin, 300, 48)) {
+      expect(haversineKm(origin, p)).toBeCloseTo(300, 2);
+    }
   });
 });

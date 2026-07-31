@@ -19,8 +19,11 @@ import {
   robustMaxAbs,
 } from '../src/data/amplitude';
 import {signedPeakBins} from '../src/data/waveform';
-import {nearestTo} from '../src/geo/distance';
+import {nearestTo, haversineKm, wavefrontRing} from '../src/geo/distance';
 import type {Coastline, ShakeDataset} from '../src/data/types';
+
+const VP_KMS = 6.0;
+const VS_KMS = 3.5;
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const coastline = JSON.parse(
@@ -65,6 +68,31 @@ const paths = coastline.rings
     return `<path d="${d}Z" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1"/>`;
   })
   .join('\n');
+
+// P and S wavefronts at the snapshot time.
+const epicentre0 = {lat: dataset.event.lat, lon: dataset.event.lon};
+const maxSensorKm = dataset.sensors
+  .filter(s => s.hasData)
+  .reduce((m, s) => Math.max(m, haversineKm(s, epicentre0)), 0);
+const wavefront = (km: number, colour: string, dash: string) => {
+  if (km <= 0 || km > maxSensorKm + 60) return '';
+  const d = wavefrontRing(epicentre0, km)
+    .map((pt, i) => {
+      const p = projector.project(pt);
+      return `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+    })
+    .join(' ');
+  return `<path d="${d}Z" fill="none" stroke="${colour}" stroke-width="1.4"${dash}/>`;
+};
+const waves =
+  secondsAfterOrigin > 0
+    ? wavefront(VS_KMS * secondsAfterOrigin, 'rgba(255,255,255,0.7)', '') +
+      wavefront(
+        VP_KMS * secondsAfterOrigin,
+        'rgba(255,255,255,0.4)',
+        ' stroke-dasharray="7 5"'
+      )
+    : '';
 
 const circles = dataset.sensors
   .map(s => {
@@ -127,6 +155,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" wid
 <text x="20" y="34" fill="#fff" font-family="sans-serif" font-size="20" font-weight="600">+${secondsAfterOrigin.toFixed(0)} s</text>
 <text x="20" y="54" fill="#9a9aa2" font-family="sans-serif" font-size="12">${dataset.event.name}</text>
 ${paths}
+${waves}
 ${circles}
 ${epicentre}
 ${strip}

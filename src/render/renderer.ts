@@ -37,6 +37,8 @@ export interface RenderStyle {
   sensor: string;
   restSensor: string;
   epicenter: string;
+  pWave: string;
+  sWave: string;
   minRadius: number;
   maxRadius: number;
   /** Log dynamic range (decades) for the radius mapping; see amplitudeToCircle. */
@@ -51,6 +53,8 @@ export const DEFAULT_STYLE: RenderStyle = {
   sensor: '#ffffff',
   restSensor: 'rgba(255,255,255,0.28)',
   epicenter: 'rgba(255,255,255,0.85)',
+  pWave: 'rgba(255,255,255,0.4)',
+  sWave: 'rgba(255,255,255,0.7)',
   minRadius: 1.6,
   maxRadius: 22,
   rangeDecades: 3,
@@ -58,12 +62,19 @@ export const DEFAULT_STYLE: RenderStyle = {
   ringWidth: 1.6,
 };
 
+/** Expanding P and S wavefronts, as projected closed rings (null = not shown). */
+export interface Wavefronts {
+  p: ScreenPoint[] | null;
+  s: ScreenPoint[] | null;
+}
+
 export interface FrameContext {
   startMs: number;
   sampleRateHz: number;
   globalScale: number;
   normalisation: Normalisation;
   currentTimeMs: number;
+  wavefronts?: Wavefronts | null;
 }
 
 export interface Scene {
@@ -90,6 +101,43 @@ function drawCoastline(
     ctx.closePath();
     ctx.stroke();
   }
+}
+
+function drawWavefront(
+  ctx: CanvasRenderingContext2D,
+  ring: ScreenPoint[],
+  colour: string,
+  dashed: boolean,
+  label: string
+): void {
+  if (ring.length < 2) return;
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = 1.4;
+  ctx.setLineDash(dashed ? [7, 5] : []);
+  ctx.beginPath();
+  ctx.moveTo(ring[0].x, ring[0].y);
+  for (let i = 1; i < ring.length; i++) ctx.lineTo(ring[i].x, ring[i].y);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Label at the ring's topmost point.
+  let top = ring[0];
+  for (const p of ring) if (p.y < top.y) top = p;
+  ctx.fillStyle = colour;
+  ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(label, top.x, top.y - 5);
+}
+
+function drawWavefronts(
+  ctx: CanvasRenderingContext2D,
+  waves: Wavefronts,
+  style: RenderStyle
+): void {
+  // S is the inner (slower) ring, P the outer (faster); draw S first.
+  if (waves.s) drawWavefront(ctx, waves.s, style.sWave, false, 'S');
+  if (waves.p) drawWavefront(ctx, waves.p, style.pWave, true, 'P');
 }
 
 function drawEpicentre(
@@ -121,6 +169,8 @@ export function renderFrame(
   ctx.fillRect(0, 0, scene.width, scene.height);
 
   drawCoastline(ctx, scene.coastline, style);
+
+  if (frame.wavefronts) drawWavefronts(ctx, frame.wavefronts, style);
 
   const circleOpts = {
     scale: 1,

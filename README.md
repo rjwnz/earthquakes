@@ -53,6 +53,10 @@ file server.
 - **Normalise**: `per station` (default — every site shows a clear pulse as its
   wave arrives, best for seeing propagation) or `uniform` (one global scale, so
   near-field intensity dominates — true relative amplitude).
+- **P/S waves** — schematic wavefronts expanding from the epicentre: a dashed
+  outer P front (~6.0 km/s) and a solid inner S front (~3.5 km/s), stopping once
+  past the farthest detector. Representative crustal velocities, not a per-event
+  travel-time model.
 
 ## The data
 
@@ -135,7 +139,7 @@ npm run build-sample      # → public/data/events/*.json + catalog.json
 ## Testing
 
 ```bash
-npm test                 # vitest, 96 tests
+npm test                 # vitest, 101 tests
 npm run coverage
 ```
 
@@ -151,7 +155,7 @@ parts that can actually be wrong — rather than the DOM/canvas glue:
 | [`data/amplitude`](src/data/amplitude.ts) | trace interpolation, robust normalisation scale, amplitude → radius/fill |
 | [`data/resample`](src/data/resample.ts) | anti-aliased box resample + DC-baseline removal |
 | [`data/window`](src/data/window.ts) | significant-duration (Arias 5–95%) shaking-window detection |
-| [`geo/distance`](src/geo/distance.ts) | haversine distance + nearest-station selection (antimeridian-safe) |
+| [`geo/distance`](src/geo/distance.ts) | haversine distance, nearest-station selection, destination-point + wavefront rings (antimeridian-safe) |
 | [`data/waveform`](src/data/waveform.ts) | signed peak-preserving decimation for the seismogram timeline |
 | [`playback/clock`](src/playback/clock.ts) | speed scaling, looping/wrap, clamp-and-stop, seek |
 

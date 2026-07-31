@@ -160,6 +160,14 @@ body {
   height: 12px;
 }
 
+.glyph.swave {
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+}
+
+.glyph.pwave {
+  border: 1.5px dashed rgba(255, 255, 255, 0.55);
+}
+
 /* Controls */
 #controls {
   display: flex;

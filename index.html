@@ -31,6 +31,8 @@
           <span class="legend-item"><span class="glyph solid"></span> ground moving up (+)</span>
           <span class="legend-item"><span class="glyph hollow"></span> ground moving down (−)</span>
           <span class="legend-item"><span class="glyph epi"></span> epicentre</span>
+          <span class="legend-item"><span class="glyph swave"></span> S wavefront</span>
+          <span class="legend-item"><span class="glyph pwave"></span> P wavefront</span>
         </div>
       </main>
 
@@ -66,6 +68,11 @@
             <option value="per-station">per station</option>
             <option value="uniform">uniform</option>
           </select>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label" for="waves-toggle">P/S waves</label>
+          <input id="waves-toggle" type="checkbox" checked />
         </div>
 
         <div class="control-group trace-caption">
