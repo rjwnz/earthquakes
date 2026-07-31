@@ -16,11 +16,19 @@
  * Everything is dependency-free and reuses the unit-tested transforms in src/data.
  *
  * Bucket & registry: https://registry.opendata.aws/geonet/
- * Layout (SeisComP SDS): waveforms/miniseed/{YEAR}/{NET}/{STA}/{CHA}.D/{NET}.{STA}.{LOC}.{CHA}.D.{YEAR}.{DOY}
+ * Layout (date-nested):
+ *   waveforms/miniseed/{YEAR}/{YEAR}.{DOY}/{STA}.{NET}/{YEAR}.{DOY}.{STA}.{LOC}-{CHA}.{NET}.D
+ * (all channels live directly under the {STA}.{NET} directory; the location code
+ * is embedded in the filename, so we match on the "-{CHA}.{NET}.D" suffix.)
  */
 import {readFileSync, writeFileSync, mkdirSync, existsSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {parseMiniseed, mergeRecords, type Trace} from '../src/data/miniseed';
+import {
+  parseMiniseed,
+  mergeRecords,
+  type Trace,
+  type MiniseedRecord,
+} from '../src/data/miniseed';
 import {robustMaxAbs} from '../src/data/amplitude';
 import {estimateBaseline, resampleBoxAverage} from '../src/data/resample';
 import {detectShakingWindow} from '../src/data/window';
@@ -92,30 +100,49 @@ interface Station {
   lon: number;
 }
 
-/** Per-event day/window context, computed from the event origin. */
-interface DayContext {
+/** One UTC day in the archive: its year and zero-padded day-of-year. */
+interface ArchiveDay {
   year: number;
   doyStr: string;
+}
+
+/** Per-event day/window context, computed from the event origin. */
+interface DayContext {
+  /** Every UTC day the guard span touches (usually one; two if it crosses midnight). */
+  days: ArchiveDay[];
   guardStartMs: number;
   guardEndMs: number;
 }
 
-function dayContext(originMs: number): DayContext {
-  const guardStartMs = originMs - CONFIG.window.guardPreS * 1000;
-  const d = new Date(guardStartMs);
+function archiveDay(ms: number): ArchiveDay {
+  const d = new Date(ms);
   const year = d.getUTCFullYear();
-  const startOfYear = Date.UTC(year, 0, 1);
   const doy =
     Math.floor(
-      (Date.UTC(year, d.getUTCMonth(), d.getUTCDate()) - startOfYear) /
+      (Date.UTC(year, d.getUTCMonth(), d.getUTCDate()) - Date.UTC(year, 0, 1)) /
         86_400_000
     ) + 1;
-  return {
-    year,
-    doyStr: String(doy).padStart(3, '0'),
-    guardStartMs,
-    guardEndMs: originMs + CONFIG.window.maxSpanS * 1000,
-  };
+  return {year, doyStr: String(doy).padStart(3, '0')};
+}
+
+function utcMidnight(ms: number): number {
+  const d = new Date(ms);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+function dayContext(originMs: number): DayContext {
+  const guardStartMs = originMs - CONFIG.window.guardPreS * 1000;
+  const guardEndMs = originMs + CONFIG.window.maxSpanS * 1000;
+  const days: ArchiveDay[] = [];
+  const oneDay = 86_400_000;
+  for (
+    let t = utcMidnight(guardStartMs);
+    t <= utcMidnight(guardEndMs);
+    t += oneDay
+  ) {
+    days.push(archiveDay(t));
+  }
+  return {days, guardStartMs, guardEndMs};
 }
 
 // ---- delta station catalogue (from GitHub, or a local copy) ----
@@ -212,38 +239,54 @@ async function s3ListKeys(prefix: string): Promise<string[]> {
 }
 
 /**
- * Resolve and download the first available vertical channel for a station,
- * returning its merged raw trace (native rate) over the guard span, or null.
+ * Resolve and download the preferred vertical channel for a station, returning
+ * its merged raw trace (native rate) over the guard span, or null.
+ *
+ * All of a station's channels live directly under `{STA}.{NET}/`, one file per
+ * channel+location named `{YEAR}.{DOY}.{STA}.{LOC}-{CHA}.{NET}.D`, so we list
+ * the station directory once per day and match the desired channel by its
+ * `-{CHA}.{NET}.D` suffix (any location code).
  */
 async function fetchStationRaw(
   sta: Station,
   ctx: DayContext
 ): Promise<Trace | null> {
-  for (const cha of CONFIG.channels) {
-    const prefix = `waveforms/miniseed/${ctx.year}/${CONFIG.network}/${sta.code}/${cha}.D/`;
-    let keys: string[];
+  const net = CONFIG.network;
+  const listings: Array<{keys: string[]}> = [];
+  for (const day of ctx.days) {
+    const prefix = `waveforms/miniseed/${day.year}/${day.year}.${day.doyStr}/${sta.code}.${net}/`;
     try {
-      keys = await s3ListKeys(prefix);
+      listings.push({keys: await s3ListKeys(prefix)});
     } catch {
-      continue;
+      // Skip a day we couldn't list; others may still have data.
     }
-    const key = keys.find(k => k.endsWith(`.${ctx.year}.${ctx.doyStr}`));
-    if (!key) continue;
+  }
+  if (listings.length === 0) return null;
 
+  // Choose the highest-preference channel present on any day.
+  const chosen = CONFIG.channels.find(cha =>
+    listings.some(l => l.keys.some(k => k.endsWith(`-${cha}.${net}.D`)))
+  );
+  if (!chosen) return null;
+
+  const records: MiniseedRecord[] = [];
+  for (const {keys} of listings) {
+    const key = keys.find(k => k.endsWith(`-${chosen}.${net}.D`));
+    if (!key) continue;
     const buf = await s3Get(key);
     if (!buf) continue;
-
     // Lenient: real archive records can have the odd gap; skip integrity throws.
-    const records = parseMiniseed(buf, {validateSteim: false}).filter(r => {
+    for (const r of parseMiniseed(buf, {validateSteim: false})) {
       const recEnd = r.startTimeMs + (r.numSamples / r.sampleRateHz) * 1000;
-      return r.startTimeMs < ctx.guardEndMs && recEnd > ctx.guardStartMs;
-    });
-    if (records.length === 0) continue;
-
-    const [trace] = mergeRecords(records);
-    if (trace) return trace;
+      if (r.startTimeMs < ctx.guardEndMs && recEnd > ctx.guardStartMs) {
+        records.push(r);
+      }
+    }
   }
-  return null;
+  if (records.length === 0) return null;
+
+  const [trace] = mergeRecords(records);
+  return trace ?? null;
 }
 
 /** Resample a raw trace onto the final window, removing the pre-onset baseline. */
@@ -300,9 +343,10 @@ async function buildEvent(cfg: EventConfig, outDir: string): Promise<void> {
 
   const all = loadStations(originMs);
   const selected = selectStations(all);
+  const dayLabel = ctx.days.map(d => `${d.year}.${d.doyStr}`).join('+');
   console.log(
     `\n${cfg.id}: ${all.length} stations in region → ${selected.length} selected ` +
-      `(cell ${CONFIG.selectionCellDeg}°). Downloading ${ctx.year}.${ctx.doyStr} …`
+      `(cell ${CONFIG.selectionCellDeg}°). Downloading ${dayLabel} …`
   );
 
   let done = 0;
