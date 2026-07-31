@@ -40,6 +40,7 @@ import {
   type AmplitudeMode,
   type Wavefronts,
   type GeologyShape,
+  type RenderStyle,
 } from './render/renderer';
 import {renderTraceStrip} from './render/traceStrip';
 import {PlaybackClock, SPEED_PRESETS} from './playback/clock';
@@ -127,6 +128,33 @@ const FAULT_NOTES: Record<string, {title: string; blurb: string}> = {
 const DECIMATION_CELL_PX = 26;
 const MAP_PADDING_PX = 30;
 const DATA_BASE = `${import.meta.env.BASE_URL}data/`;
+
+// Responsive sizing. Dot radii and the decimation spacing are authored for a map
+// whose shorter side is ~this many CSS px; on smaller or larger maps everything
+// scales together (within clamps) so the dots keep a consistent size relative to
+// the country on any screen. This is independent of device pixel ratio, which is
+// handled separately when sizing the canvas backing store.
+const UI_SCALE_REF_PX = 480;
+const UI_SCALE_MIN = 0.7;
+const UI_SCALE_MAX = 1.7;
+
+/** Layout size multiplier from the map's shorter on-screen side (clamped). */
+function computeUiScale(width: number, height: number): number {
+  const k = Math.min(width, height) / UI_SCALE_REF_PX;
+  return Math.max(UI_SCALE_MIN, Math.min(UI_SCALE_MAX, k));
+}
+
+/** DEFAULT_STYLE with all pixel sizes scaled by the responsive factor `k`. */
+function scaledStyle(k: number): RenderStyle {
+  return {
+    ...DEFAULT_STYLE,
+    minRadius: DEFAULT_STYLE.minRadius * k,
+    maxRadius: DEFAULT_STYLE.maxRadius * k,
+    coastlineWidth: DEFAULT_STYLE.coastlineWidth * k,
+    faultWidth: DEFAULT_STYLE.faultWidth * k,
+    uiScale: k,
+  };
+}
 
 // Seismic-wave velocities for the schematic P/S wavefronts (km/s). Representative
 // crustal values; the fronts stop expanding once past the farthest detector.
@@ -240,6 +268,10 @@ async function bootstrap(): Promise<void> {
   let envelopes: number[][] = [];
   // Current projector (kept so wavefronts can be projected each frame).
   let projector: Projector | null = null;
+  // Responsive layout scale (dots/markers) and the style derived from it, both
+  // recomputed on every layout. Start at 1 until the first layout runs.
+  let uiScale = 1;
+  let mapStyle: RenderStyle = DEFAULT_STYLE;
   let showWaves = true;
   // Optional major-faults overlay (off by default).
   let showFaults = false;
@@ -294,7 +326,9 @@ async function bootstrap(): Promise<void> {
       return {x: p.x, y: p.y, index};
     });
     const clusters = decimateByGrid(placed, {
-      cellSize: DECIMATION_CELL_PX,
+      // Scale on-screen dot spacing with the dots themselves, so density stays
+      // consistent across screen sizes.
+      cellSize: DECIMATION_CELL_PX * uiScale,
       priority: p => (dataset!.sensors[p.index].hasData ? 1 : 0),
     });
     const sensors: RenderSensor[] = clusters.map(c => {
@@ -347,7 +381,7 @@ async function bootstrap(): Promise<void> {
     if (!dataset) return;
     const currentTimeMs = dataset.startMs + clock.positionMs;
     const elapsedSec = (currentTimeMs - dataset.event.originTimeMs) / 1000;
-    renderFrame(mapCtx, scene, DEFAULT_STYLE, {
+    renderFrame(mapCtx, scene, mapStyle, {
       startMs: dataset.startMs,
       sampleRateHz: dataset.sampleRateHz,
       globalScale: dataset.amplitudeScale,
@@ -400,6 +434,8 @@ async function bootstrap(): Promise<void> {
 
   const layoutMap = (): void => {
     const {w, h} = sizeCanvas(mapCanvas, mapCtx);
+    uiScale = computeUiScale(w, h);
+    mapStyle = scaledStyle(uiScale);
     projector = createProjector(bounds, {
       width: w,
       height: h,
@@ -703,7 +739,8 @@ async function bootstrap(): Promise<void> {
   // ---- Sensor hover: show location + shortened trace over the map ----
   const findSensorAt = (cssX: number, cssY: number): RenderSensor | null => {
     let best: RenderSensor | null = null;
-    let bestDist = SENSOR_HIT_PX * SENSOR_HIT_PX;
+    const hit = SENSOR_HIT_PX * uiScale;
+    let bestDist = hit * hit;
     for (const s of scene.sensors) {
       const dx = s.x - cssX;
       const dy = s.y - cssY;

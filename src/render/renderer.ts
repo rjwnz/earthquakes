@@ -81,6 +81,13 @@ export interface RenderStyle {
   faultWidth: number;
   /** Opacity of the bedrock-geology overlay fills (0..1). */
   geologyFillAlpha: number;
+  /**
+   * Responsive size multiplier for fixed-size markers (epicentre, wavefront and
+   * province labels). 1 = the reference size; `main.ts` scales it with the map's
+   * on-screen size so markers stay proportional across screens. The disc radii
+   * and line widths above are pre-scaled by the caller, so they are unaffected.
+   */
+  uiScale: number;
 }
 
 export const DEFAULT_STYLE: RenderStyle = {
@@ -107,6 +114,7 @@ export const DEFAULT_STYLE: RenderStyle = {
   coastlineWidth: 1,
   faultWidth: 1.1,
   geologyFillAlpha: 0.5,
+  uiScale: 1,
 };
 
 /** Parse a `#rrggbb` colour into an `rgba(...)` string at the given alpha. */
@@ -227,14 +235,14 @@ function drawGeology(
 
   // Labels sit above the fills but are not clipped, so coastal provinces stay
   // legible. A dark halo keeps them readable over any colour.
-  ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
+  ctx.font = `600 ${10 * style.uiScale}px ui-sans-serif, system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
   for (const region of geology) {
     if (!region.label) continue;
     const {x, y} = region.labelAt;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3 * style.uiScale;
     ctx.strokeStyle = 'rgba(0,0,0,0.72)';
     ctx.strokeText(region.label, x, y);
     ctx.fillStyle = withAlpha(geologyCategory(region.category).color, 0.95);
@@ -248,12 +256,13 @@ function drawWavefront(
   ring: ScreenPoint[],
   colour: string,
   dashed: boolean,
-  label: string
+  label: string,
+  uiScale: number
 ): void {
   if (ring.length < 2) return;
   ctx.strokeStyle = colour;
-  ctx.lineWidth = 1.4;
-  ctx.setLineDash(dashed ? [7, 5] : []);
+  ctx.lineWidth = 1.4 * uiScale;
+  ctx.setLineDash(dashed ? [7 * uiScale, 5 * uiScale] : []);
   ctx.beginPath();
   ctx.moveTo(ring[0].x, ring[0].y);
   for (let i = 1; i < ring.length; i++) ctx.lineTo(ring[i].x, ring[i].y);
@@ -265,9 +274,9 @@ function drawWavefront(
   let top = ring[0];
   for (const p of ring) if (p.y < top.y) top = p;
   ctx.fillStyle = colour;
-  ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
+  ctx.font = `600 ${12 * uiScale}px ui-sans-serif, system-ui, sans-serif`;
   ctx.textAlign = 'center';
-  ctx.fillText(label, top.x, top.y - 5);
+  ctx.fillText(label, top.x, top.y - 5 * uiScale);
 }
 
 function drawWavefronts(
@@ -276,8 +285,10 @@ function drawWavefronts(
   style: RenderStyle
 ): void {
   // S is the inner (slower) ring, P the outer (faster); draw S first.
-  if (waves.s) drawWavefront(ctx, waves.s, style.sWave, false, 'S');
-  if (waves.p) drawWavefront(ctx, waves.p, style.pWave, true, 'P');
+  if (waves.s)
+    drawWavefront(ctx, waves.s, style.sWave, false, 'S', style.uiScale);
+  if (waves.p)
+    drawWavefront(ctx, waves.p, style.pWave, true, 'P', style.uiScale);
 }
 
 function drawEpicentre(
@@ -285,16 +296,17 @@ function drawEpicentre(
   p: ScreenPoint,
   style: RenderStyle
 ): void {
-  const r = 7;
+  const r = 7 * style.uiScale;
+  const arm = 4 * style.uiScale;
   ctx.strokeStyle = style.epicenter;
-  ctx.lineWidth = 1.4;
+  ctx.lineWidth = 1.4 * style.uiScale;
   // A small ring with a cross-hair — reads clearly in monochrome.
   ctx.beginPath();
   ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-  ctx.moveTo(p.x - r - 4, p.y);
-  ctx.lineTo(p.x + r + 4, p.y);
-  ctx.moveTo(p.x, p.y - r - 4);
-  ctx.lineTo(p.x, p.y + r + 4);
+  ctx.moveTo(p.x - r - arm, p.y);
+  ctx.lineTo(p.x + r + arm, p.y);
+  ctx.moveTo(p.x, p.y - r - arm);
+  ctx.lineTo(p.x, p.y + r + arm);
   ctx.stroke();
 }
 
