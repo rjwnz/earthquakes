@@ -244,7 +244,7 @@ async function bootstrap(): Promise<void> {
   // Optional major-faults overlay (off by default).
   let showFaults = false;
   // Optional bedrock-geology overlay (off by default).
-  let showGeology = false;
+  let showGeology = true;
   // Distance to the farthest recording sensor; the fronts stop just beyond it.
   let maxSensorKm = 0;
 
