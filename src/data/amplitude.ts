@@ -72,34 +72,45 @@ export interface CircleStyle {
 export interface CircleMapOptions {
   /** Amplitude that maps to `maxRadius` (values above are clamped). */
   scale: number;
-  /** Radius at zero amplitude, in pixels. */
+  /** Radius at (and below) the quiet floor, in pixels. */
   minRadius: number;
   /** Radius at (or above) `scale`, in pixels. */
   maxRadius: number;
   /**
-   * Perceptual exponent applied to the normalised magnitude. `< 1` lifts small
-   * motions so they stay visible; `1` is linear. Default 0.5 (sqrt).
+   * How many orders of magnitude of amplitude below `scale` still register.
+   * The radius is a *logarithmic* function of magnitude, so each 10× change in
+   * shaking is an equal step in radius — matching how shaking is perceived
+   * (felt intensity scales with the log of ground motion). Amplitudes weaker
+   * than `scale / 10^rangeDecades` collapse to `minRadius`. Default 3 (a
+   * 1000× dynamic range).
    */
-  gamma?: number;
+  rangeDecades?: number;
 }
 
 /**
- * Map a signed amplitude to a circle radius and fill flag.
+ * Map a signed amplitude to a circle radius and fill flag, on a log scale.
  *
  * The radius depends only on the magnitude; the sign only chooses fill. The
- * normalised magnitude is clamped to `[0, 1]` and shaped by `gamma`.
+ * magnitude is normalised by `scale`, then mapped through `log10` across
+ * `rangeDecades` decades so that equal ratios of shaking give equal radius
+ * steps — a perceptual (intensity-like) response rather than a raw-amplitude one.
  */
 export function amplitudeToCircle(
   amplitude: number,
   options: CircleMapOptions
 ): CircleStyle {
   const {minRadius, maxRadius} = options;
-  const gamma = options.gamma ?? 0.5;
+  const decades =
+    options.rangeDecades && options.rangeDecades > 0 ? options.rangeDecades : 3;
   const scale = options.scale > 0 ? options.scale : 1;
 
   const normalised = Math.min(1, Math.abs(amplitude) / scale);
-  const shaped = Math.pow(normalised, gamma);
-  const radius = minRadius + (maxRadius - minRadius) * shaped;
+  // t = 1 at `scale`, 0 at `scale / 10^decades`, log-linear in between.
+  let t = 0;
+  if (normalised > 0) {
+    t = Math.max(0, Math.min(1, (Math.log10(normalised) + decades) / decades));
+  }
+  const radius = minRadius + (maxRadius - minRadius) * t;
 
   return {radius, filled: amplitude >= 0};
 }

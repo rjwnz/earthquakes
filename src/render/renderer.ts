@@ -39,7 +39,8 @@ export interface RenderStyle {
   epicenter: string;
   minRadius: number;
   maxRadius: number;
-  gamma: number;
+  /** Log dynamic range (decades) for the radius mapping; see amplitudeToCircle. */
+  rangeDecades: number;
   coastlineWidth: number;
   ringWidth: number;
 }
@@ -51,8 +52,8 @@ export const DEFAULT_STYLE: RenderStyle = {
   restSensor: 'rgba(255,255,255,0.28)',
   epicenter: 'rgba(255,255,255,0.85)',
   minRadius: 1.6,
-  maxRadius: 24,
-  gamma: 0.6,
+  maxRadius: 22,
+  rangeDecades: 3,
   coastlineWidth: 1,
   ringWidth: 1.6,
 };
@@ -125,7 +126,7 @@ export function renderFrame(
     scale: 1,
     minRadius: style.minRadius,
     maxRadius: style.maxRadius,
-    gamma: style.gamma,
+    rangeDecades: style.rangeDecades,
   };
 
   ctx.fillStyle = style.sensor;

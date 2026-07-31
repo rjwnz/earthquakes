@@ -61,8 +61,10 @@ describe('robustMaxAbs', () => {
   });
 });
 
-describe('amplitudeToCircle', () => {
-  const opts = {scale: 100, minRadius: 2, maxRadius: 20, gamma: 1};
+describe('amplitudeToCircle (log scale)', () => {
+  // scale 1000, 3 decades → floor at 1 (1000 / 10^3).
+  const opts = {scale: 1000, minRadius: 2, maxRadius: 20, rangeDecades: 3};
+  const span = opts.maxRadius - opts.minRadius;
 
   it('fills for positive amplitude and outlines for negative', () => {
     expect(amplitudeToCircle(50, opts).filled).toBe(true);
@@ -71,33 +73,58 @@ describe('amplitudeToCircle', () => {
   });
 
   it('radius depends only on magnitude, not sign', () => {
-    expect(amplitudeToCircle(50, opts).radius).toBeCloseTo(
-      amplitudeToCircle(-50, opts).radius,
+    expect(amplitudeToCircle(500, opts).radius).toBeCloseTo(
+      amplitudeToCircle(-500, opts).radius,
       9
     );
   });
 
-  it('maps zero to the minimum and scale to the maximum radius', () => {
-    expect(amplitudeToCircle(0, opts).radius).toBeCloseTo(2, 9);
-    expect(amplitudeToCircle(100, opts).radius).toBeCloseTo(20, 9);
+  it('maps `scale` to the maximum radius', () => {
+    expect(amplitudeToCircle(1000, opts).radius).toBeCloseTo(20, 9);
+  });
+
+  it('collapses amplitudes at/below the floor to the minimum radius', () => {
+    expect(amplitudeToCircle(0, opts).radius).toBeCloseTo(2, 9); // zero
+    expect(amplitudeToCircle(1, opts).radius).toBeCloseTo(2, 9); // scale/10^3
+    expect(amplitudeToCircle(0.1, opts).radius).toBeCloseTo(2, 9); // below floor
+  });
+
+  it('places each decade at an equal radius step (log-linear)', () => {
+    // scale/10 → 2/3, scale/100 → 1/3 of the radius span above the floor.
+    expect(amplitudeToCircle(100, opts).radius).toBeCloseTo(
+      2 + (2 / 3) * span,
+      9
+    );
+    expect(amplitudeToCircle(10, opts).radius).toBeCloseTo(
+      2 + (1 / 3) * span,
+      9
+    );
+    // Equal steps: r(1000) - r(100) === r(100) - r(10).
+    const rTop = amplitudeToCircle(1000, opts).radius;
+    const rMid = amplitudeToCircle(100, opts).radius;
+    const rLow = amplitudeToCircle(10, opts).radius;
+    expect(rTop - rMid).toBeCloseTo(rMid - rLow, 9);
   });
 
   it('clamps magnitudes beyond the scale', () => {
-    expect(amplitudeToCircle(1000, opts).radius).toBeCloseTo(20, 9);
+    expect(amplitudeToCircle(100000, opts).radius).toBeCloseTo(20, 9);
   });
 
   it('grows monotonically with magnitude', () => {
     const r1 = amplitudeToCircle(10, opts).radius;
-    const r2 = amplitudeToCircle(40, opts).radius;
-    const r3 = amplitudeToCircle(80, opts).radius;
+    const r2 = amplitudeToCircle(100, opts).radius;
+    const r3 = amplitudeToCircle(800, opts).radius;
     expect(r1).toBeLessThan(r2);
     expect(r2).toBeLessThan(r3);
   });
 
-  it('gamma < 1 lifts small motions above the linear response', () => {
-    const linear = amplitudeToCircle(25, {...opts, gamma: 1}).radius;
-    const shaped = amplitudeToCircle(25, {...opts, gamma: 0.5}).radius;
-    expect(shaped).toBeGreaterThan(linear);
+  it('respects a custom dynamic range', () => {
+    // With 2 decades, scale/10 is halfway (1/2), not 2/3.
+    const narrow = {...opts, rangeDecades: 2};
+    expect(amplitudeToCircle(100, narrow).radius).toBeCloseTo(
+      2 + 0.5 * span,
+      9
+    );
   });
 
   it('never divides by zero when scale is non-positive', () => {
